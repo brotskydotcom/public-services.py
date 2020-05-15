@@ -8,7 +8,7 @@ from ..db.model import an_form_items as ani
 from ..utils import ATRecord, ANSubmission, log_error
 from ..utils import FormContext as FC
 
-ENVIRONMENT = os.getenv("ENVIRONMENT", 'PROD')
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'PROD')
 
 
 async def process_items():

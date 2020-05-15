@@ -1,11 +1,18 @@
 # Copyright (c) 2019 Daniel C. Brotsky.  All rights reserved.
+import os
+
 from fastapi import FastAPI
 
-from ..db import database
 from .an import an
+from ..db import database
+
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'PROD')
 
 # create the webapp
-app = FastAPI()
+if ENVIRONMENT == 'DEV':
+    app = FastAPI()
+else:
+    app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 
 # add the sub-APIs
 app.include_router(
