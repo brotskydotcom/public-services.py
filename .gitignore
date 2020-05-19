@@ -2,8 +2,8 @@
 # using JetBrains locally
 .idea/
 
-# local scratch area
-/scratch/
+# local secure area
+/local/
 
 ## Github Python ignores
 # Byte-compiled / optimized / DLL files
