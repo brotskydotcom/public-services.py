@@ -42,8 +42,11 @@ def database_error(context: str) -> JSONResponse:
          response_model=WebHookResponse,
          responses={502: {'model': DatabaseErrorResponse,
                           'description': "Database error during processing"}},
-         summary="Receiver for new webhook messages")
-async def receive_notification(body: List[Dict]):
+         summary="Receiver for new webhook messages. Valid hooks are "
+                 "processed immediately unless query parameter "
+                 "'delay_processing' is specified as 'true'")
+async def receive_notification(body: List[Dict],
+                               delay_processing: bool = False):
     """
     Receive a notification from an Action Network webhook.
 
@@ -63,7 +66,7 @@ async def receive_notification(body: List[Dict]):
         except:
             return database_error("While saving received items")
     print(f"Accepted {len(items)} item(s) from webhook.")
-    if items:
+    if items and not delay_processing:
         print(f"Running worker task to transfer received item(s).")
         asyncio.create_task(transfer_all_webhook_items())
     return WebHookResponse(accepted=len(items))

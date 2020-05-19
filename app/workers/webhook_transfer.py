@@ -8,8 +8,6 @@ from ..db.model import an_form_items as ani
 from ..utils import ATRecord, ANSubmission, log_error
 from ..utils import FormContext as FC
 
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'PROD')
-
 
 async def process_items():
     print(f"Looking for unprocessed webhook items...")
@@ -26,7 +24,7 @@ async def process_items():
             if await process_item(item):
                 delete_item_list.append(item_id)
         # check if we can delete the final receipt
-        if delete_item_list and ENVIRONMENT != "DEV":
+        if delete_item_list:
             print(f"Deleting {len(delete_item_list)} fully processed item(s).")
             async with database.transaction():
                 for item_id in delete_item_list:

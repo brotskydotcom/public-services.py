@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
-from typing import ClassVar, Dict, Optional
+from dataclasses import dataclass, asdict
+from typing import ClassVar, Dict, Optional, Any, List, Tuple
 
-from dataclasses import dataclass
+import botocore.client
+import botocore.session
 
 
 class FormContext:
@@ -27,30 +30,60 @@ class FormContext:
         at_table_name: str
         at_typecast: bool
 
-    known_forms: ClassVar[Dict[str, FormData]] = {
-        'gru': FormData(
-            name='gru',
-            an_headers={'OSDI-API-Token': os.getenv('AN_API_TOKEN', 'none')},
-            an_form_id='d7a73085-2395-4de7-8f9b-147c8fcc1ab2',
-            an_custom_field_map={},
-            at_account_key=os.getenv('AT_GRU_ACCOUNT_KEY', 'none'),
-            at_database_key='appWMDeTEzqBxrNp2',
-            at_table_name='Applications',
-            at_typecast=False,
-        ),
-        # 'stv': FormData(
-        #     name='stv',
-        #     an_headers={'OSDI-API-Token': os.getenv('AN_API_TOKEN', 'none')},
-        #     an_form_id='d7a73085-2395-4de7-8f9b-147c8fcc1ab2',
-        #     an_custom_field_map={},
-        #     at_account_key=os.getenv('AT_STV_ACCOUNT_KEY', 'none'),
-        #     at_database_key='unknown',
-        #     at_table_name='unknown',
-        #     at_typecast=True,
-        # ),
-    }
+    known_forms: ClassVar[Dict[str, FormData]] = {}
 
     current: ClassVar[Optional[FormData]] = None
+
+    @classmethod
+    def get_client_and_target(cls) -> Tuple[botocore.client.BaseClient, str, str]:
+        key = os.getenv('AWS_ACCESS_KEY_ID', '')
+        secret = os.getenv('AWS_SECRET_ACCESS_KEY', '')
+        region = os.getenv('AWS_REGION_NAME', '')
+        bucket = os.getenv('AWS_BUCKET_NAME', 'public-services.brotsky.net')
+        path = os.getenv('AWS_CONFIG_PATH', 'config/contexts.json')
+        if not key or not secret or not region or not bucket or not path:
+            raise EnvironmentError("Complete AWS connect info not found")
+        session = botocore.session.get_session()
+        return (session.create_client(service_name='s3',
+                                      region_name=region,
+                                      aws_access_key_id=key,
+                                      aws_secret_access_key=secret),
+                bucket,
+                path,
+                )
+
+    @classmethod
+    def load_config_from_aws(cls):
+        print("Loading form context...")
+        client, bucket, key = cls.get_client_and_target()
+        response = client.get_object(Bucket=bucket, Key=key)
+        if response['ResponseMetadata']['HTTPStatusCode'] != 200:
+            raise RuntimeError(f"Failure to download form configuration: {response}")
+        form_data: List[Dict[str, Any]] = json.load(response['Body'])
+        response['Body'].close()
+        forms = {}
+        for d in form_data:
+            forms[d['name']] = cls.FormData(**d)
+        if not forms:
+            raise RuntimeError(f"Form configuration is empty")
+        cls.known_forms = forms
+        print(f"Loaded {len(forms)} forms.")
+
+    @classmethod
+    def put_config_to_aws(cls):
+        content = [asdict(form_data) for form_data in cls.known_forms.values()]
+        if not content:
+            raise ValueError("Saving an empty config not allowed")
+        body = (json.dumps(content, indent=2) + '\n').encode('utf-8')
+        client, bucket, key = cls.get_client_and_target()
+        response = client.put_object(Bucket=bucket,
+                                     Key=key,
+                                     ContentEncoding='utf-8',
+                                     ContentType='application/json',
+                                     Body=body,
+                                     )
+        if response['ResponseMetadata']['HTTPStatusCode'] >= 400:
+            raise RuntimeError(f"Failed to write config: {response}")
 
     @classmethod
     def set(cls, name: str):
@@ -117,3 +150,12 @@ class FormContext:
                 cls.current.at_database_key,
                 cls.current.at_table_name,
                 cls.current.at_typecast)
+
+    @classmethod
+    def initialize(cls):
+        if not cls.known_forms:
+            cls.load_config_from_aws()
+
+
+# initialize on load
+FormContext.initialize()
