@@ -4,7 +4,7 @@ import requests
 from airtable import Airtable
 
 from ..utils import ATRecord, ANSubmission
-from ..utils import FormContext as fc
+from ..utils import FormContext as FC
 
 
 def fetch_records() -> Dict[str, ATRecord]:
@@ -15,7 +15,7 @@ def fetch_records() -> Dict[str, ATRecord]:
     The Airtable API is paged, but the wrapper takes
     care of that under the covers.
     """
-    at_key, at_base, at_table, _ = fc.at_connect_info()
+    at_key, at_base, at_table, _ = FC.at_connect_info()
     print(f"Looking for records in table '{at_table}'...")
     at = Airtable(at_base, at_table, api_key=at_key)
     results = {}    # keep a map from email (key) to record
@@ -37,12 +37,12 @@ def fetch_submitter_urls() -> Set[str]:
     """
     print(f"Looking for submission hashes...")
     session = requests.session()
-    session.headers = fc.an_headers()
+    session.headers = FC.an_headers()
     submitter_urls = set()
     page, total_pages = 1, 1
     while page <= total_pages:
         query = f"?page={page}"
-        response = session.get(fc.an_submissions_url() + query)
+        response = session.get(FC.an_submissions_url() + query)
         response.raise_for_status()
         response.encoding = 'utf-8'
         item = ANSubmission(body=response.json())
@@ -67,13 +67,13 @@ def fetch_submitter_urls() -> Set[str]:
 
 def fetch_submitters(submitter_urls: Set[str]) -> Dict[str, ATRecord]:
     """
-    Get people info about submitters fron Action Network.
+    Get people info about submitters from Action Network.
     This includes their custom form fields, which are then
     turned into records mapped to their email address.
     """
     print(f"Creating records for {len(submitter_urls)} submitters...")
     session = requests.session()
-    session.headers = fc.an_headers()
+    session.headers = FC.an_headers()
     people: Dict[str, ATRecord] = {}    # Map emails to records
     for i, url in enumerate(submitter_urls):
         response = session.get(url)
@@ -116,7 +116,7 @@ def compare_record_maps(at_map: Dict[str, ATRecord],
 
 def make_at_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
     """Update Airtable from newer Action Network records"""
-    at_key, at_base, at_table, at_typecast = fc.at_connect_info()
+    at_key, at_base, at_table, at_typecast = FC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
     an_only = comparison_map['an_only']
     did_update = False
@@ -137,9 +137,9 @@ def make_at_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
             if not did_update:
                 print(f"Updating table '{at_table}'...")
             did_update = True
-            print(f"Updating {len(update_map)} existing records...")
-            for i, (key, fields) in enumerate(an_newer.items()):
-                at.update(key, fields, typecast=at_typecast)
+            print(f"Updating {len(update_map)} existing record(s)...")
+            for i, (record_id, updates) in enumerate(update_map.items()):
+                at.update(record_id, updates, typecast=at_typecast)
                 if (i+1) % 10 == 0:
                     print(f"Processed {i+1}/{len(an_newer)}...")
     if not did_update:
@@ -147,9 +147,13 @@ def make_at_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
 
 
 def transfer_all_gru_applications():
-    fc.set('gru')
+    FC.set('gru')
     record_map = fetch_records()
     urls = fetch_submitter_urls()
     people_map = fetch_submitters(urls)
     comparison_map = compare_record_maps(record_map, people_map)
     make_at_updates(comparison_map)
+
+
+if __name__ == "__main__":
+    transfer_all_gru_applications()
