@@ -1,4 +1,4 @@
-from typing import Dict, Set, Any
+from typing import Dict, Set, Any, List
 
 import requests
 from airtable import Airtable
@@ -146,14 +146,11 @@ def make_at_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
         print(f"No updates required to table '{at_table}'.")
 
 
-def transfer_all_gru_applications():
-    FC.set('gru')
-    record_map = fetch_records()
-    urls = fetch_submitter_urls()
-    people_map = fetch_submitters(urls)
-    comparison_map = compare_record_maps(record_map, people_map)
-    make_at_updates(comparison_map)
-
-
-if __name__ == "__main__":
-    transfer_all_gru_applications()
+def transfer_all_forms(names: List[str]):
+    for name in names:
+        FC.set(name)
+        record_map = fetch_records()
+        urls = fetch_submitter_urls()
+        people_map = fetch_submitters(urls)
+        comparison_map = compare_record_maps(record_map, people_map)
+        make_at_updates(comparison_map)

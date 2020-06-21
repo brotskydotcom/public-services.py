@@ -120,8 +120,8 @@ class FormContext:
         """
         if not cls.current:
             raise ValueError("You must set the context before using it")
-        # GRU fields carry over as is
-        if cls.current.name == 'gru' and field_name.startswith('gru_'):
+        # fields prefixed with the form name plus underscore carry over as is
+        if field_name.startswith(cls.current.name + '_'):
             return field_name
         # otherwise look the field up
         return cls.current.an_custom_field_map.get(field_name)
