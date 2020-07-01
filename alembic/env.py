@@ -21,7 +21,9 @@ fileConfig(config.config_file_name)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-import sys; sys.path.extend('.')
+import sys
+
+sys.path.extend(".")
 
 from app.db import db_get_url, db_metadata
 
@@ -67,9 +69,7 @@ def run_migrations_online():
     connectable = create_engine(db_get_url())
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()
