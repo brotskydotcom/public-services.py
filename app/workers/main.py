@@ -42,10 +42,10 @@
 #  SOFTWARE.
 
 from .webhook_transfer import transfer_all_webhook_items
-from ..db import database
+from ..db import redis
 
 
 async def app():
-    await database.connect()
+    await redis.db.connect()
     await transfer_all_webhook_items()
-    await database.disconnect()
+    await redis.db.close()

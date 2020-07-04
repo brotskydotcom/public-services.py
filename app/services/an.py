@@ -21,27 +21,23 @@
 #  SOFTWARE.
 
 import asyncio
-import os
+import pickle
 from typing import Dict, List, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
-from ..db import database
-from ..db.model import an_form_items as ani
-from ..utils import ANSubmission, log_error
+from ..db import redis
+from ..utils import ANSubmission, log_error, env, seq_id, Environment
 from ..workers import transfer_all_webhook_items
-
-ENVIRONMENT = os.getenv("ENVIRONMENT", "PROD")
 
 an = APIRouter()
 
 
 class Submission(BaseModel):
-    """The resource posted by an Action Network webhook"""
+    """The resource posted by an Action Network web hook"""
 
-    id: int
     form_name: str
     body: Any
 
@@ -75,24 +71,23 @@ def database_error(context: str) -> JSONResponse:
 )
 async def receive_notification(body: List[Dict], delay_processing: bool = False):
     """
-    Receive a notification from an Action Network webhook.
+    Receive a notification from an Action Network web hook.
 
     See https://actionnetwork.org/docs/webhooks for details.
     """
     print(f"Received webhook with {len(body)} hash(es).")
+    ani_key: str = redis.get_key("Submitted Items")
     items = ANSubmission.find_items(data=body)
     if items:
+        values = [pickle.dumps((item.form_name, item.body)) for item in items]
+        list_key = ":".join((env().name, seq_id(), "0"))
         try:
-            async with database.transaction():
-                for item in items:
-                    bi_query = ani.insert().values(
-                        form_name=item.form_name, body=item.as_json()
-                    )
-                    await database.execute(bi_query)
-        except:
-            return database_error("While saving received items")
+            await redis.db.rpush(list_key, *values)
+            await redis.db.rpush(ani_key, list_key)
+        except redis.Error:
+            return database_error(f"while saving received items")
     print(f"Accepted {len(items)} item(s) from webhook.")
-    if items and not delay_processing:
+    if not delay_processing:
         print(f"Running worker task to transfer received item(s).")
         asyncio.create_task(transfer_all_webhook_items())
     return WebHookResponse(accepted=len(items))
@@ -110,30 +105,23 @@ async def receive_notification(body: List[Dict], delay_processing: bool = False)
     },
     summary="Fetch items from prior posted webhooks",
 )
-async def get_item(start_id: int = 0, max_results: int = 100):
+async def get_pending_items():
     """
-    Return a block of notified items,
-    starting at the next item after _start_id_
-    and containing at most _max_results_ items.
+    Return all the notified items that haven't yet been processed.
     """
-    if ENVIRONMENT != "DEV":
+    ani_key: str = redis.get_key("Submitted Items")
+    if env() is Environment.PROD:
         raise HTTPException(403, detail="Access to production data is not allowed")
-    query = (
-        ani.select()
-        .where(ani.c.id > start_id)
-        .order_by(ani.c.id.asc())
-        .limit(max_results)
-    )
+    print("Retrieving all pending submissions...")
     results = []
     try:
-        async for row in database.iterate(query):
-            results.append(
-                Submission(
-                    id=row[ani.c.id],
-                    form_name=row[ani.c.form_name],
-                    body=row[ani.c.body],
-                )
-            )
-    except:
-        return database_error("While retrieving items")
+        submissions = await redis.db.lrange(ani_key, 0, -1, encoding="ascii")
+        for submission in submissions:
+            items = await redis.db.lrange(submission, 0, -1)
+            for item in items:
+                form_name, body = pickle.loads(item)
+                results.append(Submission(form_name=form_name, body=body))
+    except redis.Error:
+        return database_error("while retrieving submissions")
+    print(f"Returning {len(results)} pending submissions.")
     return results

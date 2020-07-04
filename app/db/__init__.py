@@ -20,5 +20,4 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 
-from .model import db_metadata, db_get_url
-from .init import database
+from .redis_db import redis

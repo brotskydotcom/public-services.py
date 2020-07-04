@@ -19,28 +19,6 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-
-#  MIT License
-#
-#
-#  Permission is hereby granted, free of charge, to any person obtaining a copy
-#  of this software and associated documentation files (the "Software"), to deal
-#  in the Software without restriction, including without limitation the rights
-#  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#  copies of the Software, and to permit persons to whom the Software is
-#  furnished to do so, subject to the following conditions:
-#
-#  The above copyright notice and this permission notice shall be included in all
-#  copies or substantial portions of the Software.
-#
-#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-#  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-#  SOFTWARE.
-
 import json
 import os
 import time
@@ -81,7 +59,6 @@ def test_webhook_invalid_form(server):
     response = requests.post(
         host + endpoint, json=test_case, headers={"Accept": "application/json"}
     )
-    time.sleep(1.0)  # give server chance to process webhook task
     assert response.status_code == 200
     assert response.json() == {"accepted": 0}
 
@@ -135,7 +112,6 @@ def test_webhook_one_valid_delay_retrieve_then_process(server):
         json=[test_case],
         headers={"Accept": "application/json"},
     )
-    time.sleep(1.0)  # give server chance to process webhook task
     endpoint_g = "/action_network/submissions"
     response = requests.get(host + endpoint_g, headers={"Accept": "application/json"})
     assert response.status_code == 200
@@ -143,7 +119,7 @@ def test_webhook_one_valid_delay_retrieve_then_process(server):
     data = response.json()
     assert len(data) == 1
     assert data[0]["form_name"] == "gru"
-    body = json.loads(data[0]["body"])
+    body = data[0]["body"]
     for k, v in body.items():
         assert sub_data[k] == v
     _ = requests.post(
