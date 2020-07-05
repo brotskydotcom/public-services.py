@@ -1,39 +1,69 @@
-import os
+#  MIT License
+#
+#  Copyright (c) 2020 Daniel C. Brotsky
+#
+#  Permission is hereby granted, free of charge, to any person obtaining a copy
+#  of this software and associated documentation files (the "Software"), to deal
+#  in the Software without restriction, including without limitation the rights
+#  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+#  copies of the Software, and to permit persons to whom the Software is
+#  furnished to do so, subject to the following conditions:
+#
+#  The above copyright notice and this permission notice shall be included in all
+#  copies or substantial portions of the Software.
+#
+#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+#  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+#  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+#  SOFTWARE.
+import pickle
 
 import aiohttp
 from airtable import Airtable
 
-from ..db import database
-from ..db.model import an_form_items as ani
-from ..utils import ATRecord, ANSubmission, log_error
+from ..db import redis
+from ..utils import ATRecord, ANSubmission, log_error, Environment, env
 from ..utils import FormContext as FC
 
 
-async def process_items():
-    print(f"Looking for unprocessed webhook items...")
-    get_items = ani.select().order_by(ani.c.id.asc())
-    delete_item_list = []
+async def process_items(master_key: str, list_key: str):
+    """
+    Process the items in the list, queuing problems for later retry.
+    """
+    print(f"Processing webhook item list '{list_key}'...")
+    success_count, fail_count = 0, 0
+    environ, guid, retry_count = list_key.split(":")
+    retry_key = ":".join((environ, guid, str(int(retry_count) + 1)))
     try:
-        async for row in database.iterate(get_items):
-            item_id = row[ani.c.id]
-            item = ANSubmission.from_body_text(id=item_id, body_text=row[ani.c.body])
-            FC.set(row[ani.c.form_name])
-            print(
-                f"Found submission for form {FC.get()}, "
-                f"table {FC.at_connect_info()[2]}."
-            )
+        while item_data := await redis.db.lpop(list_key):
+            form_name, body = pickle.loads(item_data)
+            item = ANSubmission.from_parts(form_name, body)
+            FC.set(form_name)
+            print(f"Found submission for form {FC.get()}.")
             if await process_item(item):
-                delete_item_list.append(item_id)
-        # check if we can delete the final receipt
-        if delete_item_list:
-            print(f"Deleting {len(delete_item_list)} fully processed item(s).")
-            async with database.transaction():
-                for item_id in delete_item_list:
-                    delete_item = ani.delete().where(ani.c.id == item_id)
-                    await database.execute(delete_item)
-    except:
-        log_error("Error while accessing database")
-    print(f"Item processing done.")
+                success_count += 1
+                if env() is Environment.DEV:
+                    logging_key = redis.get_key("Successfully processed")
+                    redis.db.rpush(logging_key, item_data)
+            else:
+                fail_count += 1
+                redis.db.rpush(retry_key, item_data)
+                if env() is Environment.DEV:
+                    logging_key = redis.get_key("Failed to process")
+                    redis.db.rpush(logging_key, item_data)
+        if fail_count > 0:
+            print(f"Failed to process {fail_count} item(s).")
+            if int(retry_count) >= 4:
+                print(f"Have already tried 5 times, not trying again.")
+            else:
+                print(f"Will save failed item(s) for later retry.")
+                redis.db.rpush(master_key, retry_key)
+    except redis.Error:
+        log_error(f"Failed to retrieve or update list items")
+    print(f"List '{list_key}' done: processed {success_count} item(s) successfully.")
 
 
 async def process_item(item: ANSubmission) -> bool:
@@ -43,13 +73,11 @@ async def process_item(item: ANSubmission) -> bool:
     async with aiohttp.ClientSession(headers=FC.an_headers()) as s:
         try:
             async with s.get(url) as r:
-                if r.status != 200:
-                    print(
-                        f"GRU submission {item.id} has an invalid person link: "
-                        f"status {r.status}"
-                    )
+                if r.status == 200:
+                    submitter = await r.json(encoding="utf-8")
+                else:
+                    print(f"Invalid person link: status {r.status}")
                     return True
-                submitter = await r.json(encoding="utf-8")
         except:
             log_error("Error fetching submitter info")
             return False
@@ -87,4 +115,11 @@ async def process_item(item: ANSubmission) -> bool:
 
 
 async def transfer_all_webhook_items():
-    await process_items()
+    print(f"Processing all webhook item lists...")
+    ani_key: str = redis.get_key("Submitted Items")
+    try:
+        while list_key := await redis.db.lpop(ani_key, encoding="ascii"):
+            await process_items(ani_key, list_key)
+    except redis.Error:
+        log_error(f"Error fetching webhook item list")
+    print(f"Processed all webhook item lists.")

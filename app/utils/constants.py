@@ -1,3 +1,24 @@
+#  MIT License
+#
+#
+#  Permission is hereby granted, free of charge, to any person obtaining a copy
+#  of this software and associated documentation files (the "Software"), to deal
+#  in the Software without restriction, including without limitation the rights
+#  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+#  copies of the Software, and to permit persons to whom the Software is
+#  furnished to do so, subject to the following conditions:
+#
+#  The above copyright notice and this permission notice shall be included in all
+#  copies or substantial portions of the Software.
+#
+#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+#  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+#  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+#  SOFTWARE.
+
 from __future__ import annotations
 
 import json
@@ -7,6 +28,8 @@ from typing import ClassVar, Dict, Optional, Any, List, Tuple
 
 import botocore.client
 import botocore.session
+
+from app.utils import env, Environment, lookup_env
 
 
 class FormContext:
@@ -41,7 +64,7 @@ class FormContext:
         secret = os.getenv("AWS_SECRET_ACCESS_KEY", "")
         region = os.getenv("AWS_REGION_NAME", "")
         bucket = os.getenv("AWS_BUCKET_NAME", "public-services.brotsky.net")
-        path = os.getenv("AWS_CONFIG_PATH", "config/contexts.json")
+        path = os.getenv("AWS_CONFIG_PATH", "config/contexts.v2.json")
         if not key or not secret or not region or not bucket or not path:
             raise EnvironmentError("Complete AWS connect info not found")
         session = botocore.session.get_session()
@@ -60,7 +83,9 @@ class FormContext:
     def load_config_from_json(cls, form_data: List[Dict[str, Any]]):
         forms = {}
         for d in form_data:
-            forms[d["name"]] = cls.FormData(**d)
+            if lookup_env(d.get("env")) is env():
+                del d["env"]
+                forms[d["name"]] = cls.FormData(**d)
         if not forms:
             raise RuntimeError(f"Form configuration is empty")
         cls.known_forms = forms
@@ -107,7 +132,7 @@ class FormContext:
         cls.current = cls.known_forms.get(name)
         if not cls.current:
             raise ValueError(f"Not a known form: {name}")
-        print(f"Form context set to {name}.")
+        # print(f"Form context set to {name}.")
 
     @classmethod
     def get(cls) -> str:
@@ -182,7 +207,7 @@ class FormContext:
     @classmethod
     def initialize(cls):
         if not cls.known_forms:
-            form_path = os.getenv("ENVIRONMENT") == "DEV" and os.getenv("FORM_PATH")
+            form_path = env() is Environment.DEV and os.getenv("FORM_PATH")
             if form_path:
                 cls.load_config_locally(form_path)
             else:

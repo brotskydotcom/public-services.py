@@ -20,6 +20,8 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 
+import os.path
+
 #  MIT License
 #
 #
@@ -40,16 +42,41 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-
 import sys
+from datetime import datetime
+from enum import Enum
 
-from app.workers.fetch_transfer import transfer_all_forms
+Environment = Enum("Environment", "DEV STAGE PROD")
 
-if __name__ == "__main__":
-    names = []
-    for name in sys.argv[1:]:
-        names.append(name)
-    if names:
-        transfer_all_forms(names)
+
+def lookup_env(name: str) -> Environment:
+    if name in ("DEV", "DEVELOPMENT", "QA", "TEST"):
+        return Environment.DEV
+    elif name in ("STAGE", "STAGING"):
+        return Environment.STAGE
     else:
-        raise ValueError("No form names were specified as arguments")
+        return Environment.PROD
+
+
+def env() -> Environment:
+    """Return the current process environment"""
+    return lookup_env(os.getenv("ENVIRONMENT"))
+
+
+def log_error(context: str) -> str:
+    """Log a message about an exception, and return the message"""
+    exc_type, exc_obj, exc_tb = sys.exc_info()
+    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+    message = f"{context}: " f"{exc_type}, {fname}, {exc_tb.tb_lineno}"
+    print(message, file=sys.stderr)
+    return message
+
+
+def seq_id() -> str:
+    """
+    Return a date-based, monotonically-increasing ID that's
+    reasonably likely to be unique for this computer and
+    that doesn't have any colons in it.
+    """
+    now = datetime.now().strftime("%y%m%d.%H%M%S.%f")
+    return f"{now}.{os.getpid()}"

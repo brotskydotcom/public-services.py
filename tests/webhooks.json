@@ -132,5 +132,35 @@
       "title": "Progressive Action Now",
       "url": "https://actionnetwork.org/groups/progressive-action-now"
     }
+  },
+  "valid data":
+  {
+    "osdi:submission": {
+      "created_date": "2020-03-09T07:46:45Z",
+      "modified_date": "2020-03-09T07:46:45Z",
+      "identifiers": [
+        "action_network:2fd8a74f-bcc6-4416-a121-e6eec2ed6871"
+      ],
+      "action_network:referrer_data": {
+        "source": "none",
+        "referrer": "group-everyday-people-pac",
+        "website": "none"
+      },
+      "_links": {
+        "self": {
+          "href": "https://actionnetwork.org/api/v2/forms/d7a73085-2395-4de7-8f9b-147c8fcc1ab2/submissions/2fd8a74f-bcc6-4416-a121-e6eec2ed6871"
+        },
+        "osdi:form": {
+          "href": "https://actionnetwork.org/api/v2/forms/d7a73085-2395-4de7-8f9b-147c8fcc1ab2"
+        },
+        "osdi:person": {
+          "href": "https://actionnetwork.org/api/v2/people/35596ac2-388d-4552-8fde-14f40563ef9a"
+        }
+      }
+    },
+    "action_network:sponsor": {
+      "title": "Everyday People PAC",
+      "url": "https://actionnetwork.org/groups/everyday-people-pac"
+    }
   }
 }

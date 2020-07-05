@@ -1,3 +1,25 @@
+#  MIT License
+#
+#  Copyright (c) 2020 Daniel C. Brotsky
+#
+#  Permission is hereby granted, free of charge, to any person obtaining a copy
+#  of this software and associated documentation files (the "Software"), to deal
+#  in the Software without restriction, including without limitation the rights
+#  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+#  copies of the Software, and to permit persons to whom the Software is
+#  furnished to do so, subject to the following conditions:
+#
+#  The above copyright notice and this permission notice shall be included in all
+#  copies or substantial portions of the Software.
+#
+#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+#  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+#  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+#  SOFTWARE.
+
 from __future__ import annotations
 
 import json
@@ -13,25 +35,15 @@ from .constants import FormContext as FC
 
 
 class ANSubmission(HALEasy):
-    id: int
     form_name: str
     body: Any
 
-    def __init__(
-        self, *args, id: Optional[int] = 0, body: Optional[Dict] = None, **kwargs
-    ):
-        self.id = id
-        self.body = body or {}
-        args = args or ("https://actionnetwork.org",)
-        if kwargs.get("json_str") is None:
-            kwargs.update(json_str=json.dumps(body))
-        super().__init__(*args, **kwargs)
-
     @classmethod
-    def from_body_text(cls, id: int, body_text: str) -> ANSubmission:
-        json_data: Dict = json.loads(body_text)
-        result = cls(id=id, body=json_data)
-        return result
+    def from_parts(cls, form_name: str, body: Any) -> ANSubmission:
+        self = cls("https://actionnetwork.org", json_str=json.dumps(body))
+        self.form_name = form_name
+        self.body = body
+        return self
 
     @classmethod
     def find_items(cls, data: List[Dict]) -> List[ANSubmission]:
@@ -43,25 +55,16 @@ class ANSubmission(HALEasy):
             for k, v in d.items():
                 if k != "osdi:submission":
                     continue
-                item = cls(id=len(items) + 1, body=v)
-                if form_name := item.get_form_name():
-                    item.form_name = form_name
-                    items.append(item)
+                self = cls("https://actionnetwork.org", json_str=json.dumps(v))
+                try:
+                    form_url = self.link(rel="osdi:form").href
+                except LinkNotFoundError:
+                    continue
+                if form_name := FC.lookup(form_url):
+                    self.form_name = form_name
+                    self.body = v
+                    items.append(self)
         return items
-
-    def as_json(self) -> str:
-        return json.dumps(self.body)
-
-    def get_form_name(self) -> Optional[str]:
-        """
-        Check if this submission has the right name for the context.
-        If so, return the form name.  If not, return None.
-        """
-        try:
-            form_name = FC.lookup(self.link(rel="osdi:form").href)
-        except LinkNotFoundError:
-            return None
-        return form_name
 
 
 @dataclass
@@ -119,14 +122,6 @@ class ATRecord:
         addresses = sub_data["postal_addresses"]
         address = next((a for a in addresses if a.get("primary")), addresses[0])
         street = address.get("address_lines", [""])[0]
-        phone_fields = {
-            k: v
-            for k, v in sub_data.items()
-            if k.find("hone") >= 0 or k.find("obile") > 0
-        }
-        if phone_fields:
-            print(f"Found phone fields: {phone_fields}")
-            pass
         an_core_fields = {
             "Email": email["address"],
             "First name": sub_data.get("given_name", ""),

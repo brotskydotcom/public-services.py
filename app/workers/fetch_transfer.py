@@ -1,10 +1,31 @@
-import os
+#  MIT License
+#
+#  Copyright (c) 2020 Daniel C. Brotsky
+#
+#  Permission is hereby granted, free of charge, to any person obtaining a copy
+#  of this software and associated documentation files (the "Software"), to deal
+#  in the Software without restriction, including without limitation the rights
+#  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+#  copies of the Software, and to permit persons to whom the Software is
+#  furnished to do so, subject to the following conditions:
+#
+#  The above copyright notice and this permission notice shall be included in all
+#  copies or substantial portions of the Software.
+#
+#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+#  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+#  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+#  SOFTWARE.
+
 from typing import Dict, Set, Any, List
 
 import requests
 from airtable import Airtable
 
-from ..utils import ATRecord, ANSubmission
+from ..utils import ATRecord, ANSubmission, env, Environment
 from ..utils import FormContext as FC
 
 
@@ -46,7 +67,8 @@ def fetch_submitter_urls() -> Set[str]:
         response = session.get(FC.an_submissions_url() + query)
         response.raise_for_status()
         response.encoding = "utf-8"
-        item = ANSubmission(body=response.json())
+        submission = response.json()
+        item = ANSubmission.from_parts(FC.get(), submission)
         links = item.links(rel="osdi:submissions")
         total_pages = item.properties()["total_pages"]
         print(
@@ -62,7 +84,7 @@ def fetch_submitter_urls() -> Set[str]:
                 continue
             response.encoding = "utf-8"
             submission = response.json()
-            item = ANSubmission(body=submission)
+            item = ANSubmission(FC.get, submission)
             submitter_url = item.link(rel="osdi:person").href
             submitter_urls.add(submitter_url)
             if (i + 1) % 10 == 0:
@@ -91,7 +113,7 @@ def fetch_submitters(submitter_urls: Set[str]) -> Dict[str, ATRecord]:
         if (i + 1) % 10 == 0:
             print(f"Processed {i+1}/{len(submitter_urls)}...")
     print(f"Created {len(people)} records for submitters.")
-    if os.getenv("ENVIRONMENT") == "DEV":
+    if env() is Environment.DEV:
         print(f"Action network core field counts for {len(submitter_urls)} records:")
         for fn, fc in ATRecord.an_core_fields.items():
             print(f"\t{fn}: {fc}")
@@ -167,9 +189,11 @@ def make_at_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
 
 def transfer_all_forms(names: List[str]):
     for name in names:
+        print(f"Transferring all submissions for form '{name}'...")
         FC.set(name)
         record_map = fetch_records()
         urls = fetch_submitter_urls()
         people_map = fetch_submitters(urls)
         comparison_map = compare_record_maps(record_map, people_map)
         make_at_updates(comparison_map)
+        print(f"Finished processing for form '{name}'.")
