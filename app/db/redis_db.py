@@ -20,40 +20,51 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 import os
-from typing import Optional, ClassVar
-
-import aioredis
 
 from ..utils import env, Environment
 
 
 class RedisDatabase:
     """
-    A wrapper object for async redis connection pools.
+    A wrapper object for redis connection pools.  Can dispense
+    connections based either on redis-py (sync) or aioredis (async).
 
     Attributes:
         db: the instance variable you use to access Redis
+        Error: the base error class for your type of connection
 
     Args:
-        url: the (optional) URL that the database connects to.  If not
-            specified, we look for the environment variable REDIS_URL
+        url: the URL that the database connects to.
+            It defaults to the value of the environment variable REDIS_URL,
+            and if that is not specified uses localhost database 0.
     """
 
-    Error: ClassVar = aioredis.RedisError
-    """A synonym for the base exception used by aioredis."""
-
-    def __init__(self, url: Optional[str] = None):
-        self.url = url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    def __init__(self, url: str = os.getenv("REDIS_URL")):
+        self.url = url or "redis://localhost:6379/0"
         self.db = None
         self.keys = {}
+        self.Error = Exception
 
-    async def connect(self):
+    async def connect_async(self):
+        from aioredis import RedisError, create_redis_pool
+
+        self.Error = RedisError
         max_connections = 5 if env() is Environment.PROD else 2
-        self.db = await aioredis.create_redis_pool(self.url, maxsize=max_connections)
+        self.db = await create_redis_pool(self.url, maxsize=max_connections)
 
-    async def close(self):
+    async def close_async(self):
         self.db.close()
         await self.db.wait_closed()
+
+    def connect_sync(self):
+        from redis import RedisError, from_url
+
+        self.Error = RedisError
+        max_connections = 5 if env() is Environment.PROD else 2
+        self.db = from_url(self.url, max_connections=max_connections)
+
+    def close_sync(self):
+        self.db.close()
 
     def get_key(self, name: str) -> str:
         """

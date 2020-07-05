@@ -22,18 +22,23 @@
 import json
 import os
 import time
-from multiprocessing import Process
+from multiprocessing import Process, set_start_method
 
 import pytest
 import requests
 import uvicorn
 
+from app.utils import env, Environment
 from app.services.main import app
+from app.db import redis_db
 
 
 @pytest.fixture(scope="session")
-def server():
+def server() -> str:
     if os.getenv("EXTERNAL_SERVER"):
+        set_start_method("spawn", force=True)
+        # This cannot work because FastAPI has local functions
+        # that can't be pickled.
         proc = Process(
             target=uvicorn.run,
             args=(app,),
@@ -42,76 +47,123 @@ def server():
         )
         proc.start()
         time.sleep(0.5)  # give the server time to start
-        yield
+        response = requests.get("http://localhost:8080/docs")
+        if response.status_code != 200:
+            raise RuntimeError("Tests require a DEV server at localhost:8080")
+        yield "http://localhost:8080"
         proc.terminate()
     else:
-        yield
+        response = requests.get("http://localhost:8080/docs")
+        if response.status_code != 200:
+            raise RuntimeError("Tests require a DEV server at localhost:8080")
+        yield "http://localhost:8080"
 
 
-def test_webhook_invalid_form(server):
-    """Try to post a webhook for an incorrect form"""
-    _fixture = server
+@pytest.fixture(scope="session")
+def database() -> redis_db.RedisDatabase:
+    if env() is not Environment.DEV:
+        raise RuntimeError("Tests must be run in a DEV environment")
+    redis_db.redis.connect_sync()
+    yield redis_db.redis
+    redis_db.redis.db.delete(redis_db.redis.get_key("Successfully processed"))
+    redis_db.redis.db.delete(redis_db.redis.get_key("Failed to process"))
+    redis_db.redis.close_sync()
+
+
+def test_webhook_bad_form(server, database):
+    """
+    Post a webhook for an incorrect form,
+    make sure it is not accepted.
+    """
+    host: str = server
+    redis = database
+    redis.db.delete(redis.get_key("Successfully processed"))
+    redis.db.delete(redis.get_key("Failed to process"))
     with open("tests/webhooks.json", "r") as f:
         test_cases = json.load(f)
     test_case = [test_cases["incorrect form id and person id"]]
-    host = "http://localhost:8080"
     endpoint = "/action_network/notification"
     response = requests.post(
         host + endpoint, json=test_case, headers={"Accept": "application/json"}
     )
+    time.sleep(2.0)  # give server chance to process webhook task
     assert response.status_code == 200
     assert response.json() == {"accepted": 0}
+    assert redis.db.llen(redis.get_key("Successfully processed")) == 0
+    assert redis.db.llen(redis.get_key("Failed to process")) == 0
 
 
-def test_webhook_valid_form(server):
-    """Try to post a webhook for an incorrect form"""
-    _fixture = server
+def test_case_bad_person(server, database):
+    """
+    Post a webhook for a good form but invalid person,
+    make sure it is accepted.
+    """
+    host = server
+    redis = database
+    redis.db.delete(redis.get_key("Successfully processed"))
+    redis.db.delete(redis.get_key("Failed to process"))
     with open("tests/webhooks.json", "r") as f:
         test_cases = json.load(f)
     test_case = [test_cases["incorrect person id"]]
-    host = "http://localhost:8080"
     endpoint = "/action_network/notification"
     response = requests.post(
         host + endpoint, json=test_case, headers={"Accept": "application/json"}
     )
-    time.sleep(1.0)  # give server chance to process webhook task
+    time.sleep(2.0)  # give server chance to process webhook task
     assert response.status_code == 200
     assert response.json() == {"accepted": 1}
+    assert redis.db.llen(redis.get_key("Successfully processed")) == 1
+    assert redis.db.llen(redis.get_key("Failed to process")) == 0
 
 
-def test_webhook_one_of_two_valid_forms(server):
-    """Try to post a webhook for an incorrect form"""
-    _fixture = server
+def test_webhook_bad_form_and_bad_person(server, database):
+    """
+    Post a webhook with two entries: one bad form, one bad person,
+    make sure only the bad person is accepted.
+    """
+    host = server
+    redis = database
+    redis.db.delete(redis.get_key("Successfully processed"))
+    redis.db.delete(redis.get_key("Failed to process"))
     with open("tests/webhooks.json", "r") as f:
         test_cases = json.load(f)
-    test_case = list(test_cases.values())
-    host = "http://localhost:8080"
+    test_case = [
+        test_cases["incorrect form id and person id"],
+        test_cases["incorrect person id"],
+    ]
     endpoint = "/action_network/notification"
     response = requests.post(
         host + endpoint, json=test_case, headers={"Accept": "application/json"}
     )
-    time.sleep(1.0)  # give server chance to process webhook task
+    time.sleep(2.0)  # give server chance to process webhook task
     assert response.status_code == 200
     assert response.json() == {"accepted": 1}
+    assert redis.db.llen(redis.get_key("Successfully processed")) == 1
+    assert redis.db.llen(redis.get_key("Failed to process")) == 0
 
 
-def test_webhook_one_valid_delay_retrieve_then_process(server):
+def test_webhook_bad_person_noprocess_retrieve_process_retrieve(server, database):
     """
-    Post a valid form with delayed processing, then retrieve the
+    Post a bad person form with delayed processing, then retrieve the
     posted submission, then post again without delayed processing,
     then confirm that it has been processed.
     """
-    _fixture = server
+    host = server
+    redis = database
+    redis.db.delete(redis.get_key("Successfully processed"))
+    redis.db.delete(redis.get_key("Failed to process"))
     with open("tests/webhooks.json", "r") as f:
         test_cases = json.load(f)
     test_case = test_cases["incorrect person id"]
-    host = "http://localhost:8080"
     endpoint_p = "/action_network/notification"
     _ = requests.post(
         host + endpoint_p + "?delay_processing=true",
         json=[test_case],
         headers={"Accept": "application/json"},
     )
+    time.sleep(2.0)  # give server chance to process webhook task
+    assert redis.db.llen(redis.get_key("Successfully processed")) == 0
+    assert redis.db.llen(redis.get_key("Failed to process")) == 0
     endpoint_g = "/action_network/submissions"
     response = requests.get(host + endpoint_g, headers={"Accept": "application/json"})
     assert response.status_code == 200
@@ -127,7 +179,9 @@ def test_webhook_one_valid_delay_retrieve_then_process(server):
         json=[test_case],
         headers={"Accept": "application/json"},
     )
-    time.sleep(1.0)  # give server chance to process webhook task
+    time.sleep(2.0)  # give server chance to process webhook task
     response = requests.get(host + endpoint_g, headers={"Accept": "application/json"})
     assert response.status_code == 200
     assert response.json() == []
+    assert redis.db.llen(redis.get_key("Successfully processed")) == 2
+    assert redis.db.llen(redis.get_key("Failed to process")) == 0

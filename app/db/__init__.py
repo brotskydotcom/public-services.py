@@ -20,4 +20,4 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 
-from .redis_db import redis
+from .redis_db import RedisDatabase, redis

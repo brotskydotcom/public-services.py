@@ -6,9 +6,6 @@ authors = ["Daniel Brotsky <dev@brotsky.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.8.3"
-sqlalchemy = "^1.3"
-alembic = "^1.3"
-databases = {version = "^0.2.6", extras = ["postgresql"]}
 fastapi = {version = "*", extras = ["all"]}
 uvicorn = "^0.10.3"
 gunicorn = "^20.0"
@@ -22,6 +19,8 @@ aioredis = "^1.3.1"
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
 coverage = "^4.5"
+hiredis = "^1.0.1"
+redis = "^3.5.3"
 
 [build-system]
 requires = ["poetry>=0.12"]

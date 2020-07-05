@@ -25,7 +25,7 @@ import aiohttp
 from airtable import Airtable
 
 from ..db import redis
-from ..utils import ATRecord, ANSubmission, log_error
+from ..utils import ATRecord, ANSubmission, log_error, Environment, env
 from ..utils import FormContext as FC
 
 
@@ -35,8 +35,8 @@ async def process_items(master_key: str, list_key: str):
     """
     print(f"Processing webhook item list '{list_key}'...")
     success_count, fail_count = 0, 0
-    env, guid, retry_count = list_key.split(":")
-    retry_key = ":".join((env, guid, str(int(retry_count) + 1)))
+    environ, guid, retry_count = list_key.split(":")
+    retry_key = ":".join((environ, guid, str(int(retry_count) + 1)))
     try:
         while item_data := await redis.db.lpop(list_key):
             form_name, body = pickle.loads(item_data)
@@ -45,9 +45,15 @@ async def process_items(master_key: str, list_key: str):
             print(f"Found submission for form {FC.get()}.")
             if await process_item(item):
                 success_count += 1
+                if env() is Environment.DEV:
+                    logging_key = redis.get_key("Successfully processed")
+                    redis.db.rpush(logging_key, item_data)
             else:
                 fail_count += 1
                 redis.db.rpush(retry_key, item_data)
+                if env() is Environment.DEV:
+                    logging_key = redis.get_key("Failed to process")
+                    redis.db.rpush(logging_key, item_data)
         if fail_count > 0:
             print(f"Failed to process {fail_count} item(s).")
             if int(retry_count) >= 4:
@@ -67,13 +73,11 @@ async def process_item(item: ANSubmission) -> bool:
     async with aiohttp.ClientSession(headers=FC.an_headers()) as s:
         try:
             async with s.get(url) as r:
-                if r.status != 200:
-                    print(
-                        f"GRU submission has an invalid person link: "
-                        f"status {r.status}"
-                    )
+                if r.status == 200:
+                    submitter = await r.json(encoding="utf-8")
+                else:
+                    print(f"Invalid person link: status {r.status}")
                     return True
-                submitter = await r.json(encoding="utf-8")
         except:
             log_error("Error fetching submitter info")
             return False

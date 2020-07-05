@@ -19,6 +19,8 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
+import asyncio
+
 from fastapi import FastAPI
 
 from .an import an
@@ -26,6 +28,8 @@ from ..db import redis
 from ..utils import env, Environment
 
 # create the webapp
+from ..workers import transfer_all_webhook_items
+
 if env() in (Environment.DEV, Environment.STAGE):
     app = FastAPI()
 else:
@@ -37,9 +41,11 @@ app.include_router(an, prefix="/action_network", tags=["action_network"])
 
 @app.on_event("startup")
 async def startup():
-    await redis.connect()
+    await redis.connect_async()
+    print(f"Running worker task to transfer items left from prior run.")
+    asyncio.create_task(transfer_all_webhook_items())
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    await redis.close()
+    await redis.close_async()
