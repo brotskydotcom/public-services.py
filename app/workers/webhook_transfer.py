@@ -25,8 +25,8 @@ import aiohttp
 from airtable import Airtable
 
 from ..db import redis
-from ..utils import ATRecord, ANSubmission, log_error, Environment, env
-from ..utils import FormContext as FC
+from ..utils import ATRecord, ANHash, log_error, Environment, env
+from ..utils import HashContext as HC
 
 
 async def process_items(master_key: str, list_key: str):
@@ -40,9 +40,9 @@ async def process_items(master_key: str, list_key: str):
     try:
         while item_data := await redis.db.lpop(list_key):
             form_name, body = pickle.loads(item_data)
-            item = ANSubmission.from_parts(form_name, body)
-            FC.set(form_name)
-            print(f"Found submission for form {FC.get()}.")
+            item = ANHash.from_parts(form_name, body)
+            HC.set(form_name)
+            print(f"Found submission for form {HC.get()}.")
             if await process_item(item):
                 success_count += 1
                 if env() is Environment.DEV:
@@ -66,11 +66,11 @@ async def process_items(master_key: str, list_key: str):
     print(f"List '{list_key}' done: processed {success_count} item(s) successfully.")
 
 
-async def process_item(item: ANSubmission) -> bool:
-    at_key, at_base, at_table, at_typecast = FC.at_connect_info()
+async def process_item(item: ANHash) -> bool:
+    at_key, at_base, at_table, at_typecast = HC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
     url = item.link(rel="osdi:person").href
-    async with aiohttp.ClientSession(headers=FC.an_headers()) as s:
+    async with aiohttp.ClientSession(headers=HC.an_headers()) as s:
         try:
             async with s.get(url) as r:
                 if r.status == 200:
@@ -81,9 +81,9 @@ async def process_item(item: ANSubmission) -> bool:
         except:
             log_error("Error fetching submitter info")
             return False
-    an_record = ATRecord.from_submitter(submitter)
+    an_record = ATRecord.from_person(submitter)
     try:
-        record_dict = at.match(FC.core_field_map()["Email"], an_record.key)
+        record_dict = at.match(HC.core_field_map()["Email"], an_record.key)
     except:
         log_error("Error searching for matching Airtable record")
         return False

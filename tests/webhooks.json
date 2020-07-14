@@ -133,7 +133,7 @@
       "url": "https://actionnetwork.org/groups/progressive-action-now"
     }
   },
-  "valid data":
+  "valid empty GRU data":
   {
     "osdi:submission": {
       "created_date": "2020-03-09T07:46:45Z",
@@ -155,6 +155,36 @@
         },
         "osdi:person": {
           "href": "https://actionnetwork.org/api/v2/people/35596ac2-388d-4552-8fde-14f40563ef9a"
+        }
+      }
+    },
+    "action_network:sponsor": {
+      "title": "Everyday People PAC",
+      "url": "https://actionnetwork.org/groups/everyday-people-pac"
+    }
+  },
+  "valid filled GRU data":
+  {
+    "osdi:submission": {
+      "created_date": "2020-04-21T22:30:42Z",
+      "modified_date": "2020-04-21T22:30:43Z",
+      "identifiers": [
+        "action_network:d46b7d9e-e6a3-426c-8bd7-1b92751a5320"
+      ],
+      "action_network:referrer_data": {
+        "source": "none",
+        "referrer": "group-everyday-people-pac",
+        "website": "none"
+      },
+      "_links": {
+        "self": {
+          "href": "https://actionnetwork.org/api/v2/forms/d7a73085-2395-4de7-8f9b-147c8fcc1ab2/submissions/d46b7d9e-e6a3-426c-8bd7-1b92751a5320"
+        },
+        "osdi:form": {
+          "href": "https://actionnetwork.org/api/v2/forms/d7a73085-2395-4de7-8f9b-147c8fcc1ab2"
+        },
+        "osdi:person": {
+          "href": "https://actionnetwork.org/api/v2/people/6869a3e5-1aba-4b1d-84e7-2c64382bcf28"
         }
       }
     },

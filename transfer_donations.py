@@ -19,12 +19,7 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-from .general import log_error, Environment, lookup_env, env, seq_id
-from .constants import HashContext
-from .formats import (
-    ANHash,
-    ATRecord,
-    compare_record_maps,
-    fetch_all_records,
-    make_record_updates,
-)
+from app.workers.fetch_donations import transfer_all_donations
+
+if __name__ == "__main__":
+    transfer_all_donations()

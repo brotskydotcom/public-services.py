@@ -32,31 +32,31 @@ import botocore.session
 from app.utils import env, Environment, lookup_env
 
 
-class FormContext:
+class HashContext:
     """
     This is a no-instance class.  It maintains context relevant
-    to each of the known AN forms, maintains a notion of the
-    "current" form type being processed, and vends the
-    context data to callers.
+    to each of the known AN hash types and their connected forms,
+    maintains a notion of the "current" hash/form pair being processed,
+    and vends the context data to callers.
     """
 
     an_base: ClassVar[str] = "https://actionnetwork.org/api/v2"
 
     @dataclass
-    class FormData:
+    class HashData:
         name: str
         an_headers: Dict[str, str]
-        an_form_id: str
         an_core_field_map: Dict[str, str]
         an_custom_field_map: Dict[str, str]
         at_account_key: str
         at_database_key: str
         at_table_name: str
         at_typecast: bool
+        an_form_id: Optional[str] = None
 
-    known_forms: ClassVar[Dict[str, FormData]] = {}
+    known_hashes: ClassVar[Dict[str, HashData]] = {}
 
-    current: ClassVar[Optional[FormData]] = None
+    current: ClassVar[Optional[HashData]] = None
 
     @classmethod
     def get_client_and_target(cls) -> Tuple[botocore.client.BaseClient, str, str]:
@@ -64,7 +64,7 @@ class FormContext:
         secret = os.getenv("AWS_SECRET_ACCESS_KEY", "")
         region = os.getenv("AWS_REGION_NAME", "")
         bucket = os.getenv("AWS_BUCKET_NAME", "public-services.brotsky.net")
-        path = os.getenv("AWS_CONFIG_PATH", "config/contexts.v2.json")
+        path = os.getenv("AWS_CONFIG_PATH", "config/mappings.v1.json")
         if not key or not secret or not region or not bucket or not path:
             raise EnvironmentError("Complete AWS connect info not found")
         session = botocore.session.get_session()
@@ -84,11 +84,11 @@ class FormContext:
         forms = {}
         for d in form_data:
             if lookup_env(d.get("env")) is env():
-                del d["env"]
-                forms[d["name"]] = cls.FormData(**d)
+                del d["env"]  # env is not part of the form data
+                forms[d["name"]] = cls.HashData(**d)
         if not forms:
-            raise RuntimeError(f"Form configuration is empty")
-        cls.known_forms = forms
+            raise RuntimeError(f"Configuration is empty")
+        cls.known_hashes = forms
         print(f"Loaded {len(forms)} forms.")
 
     @classmethod
@@ -97,7 +97,7 @@ class FormContext:
         client, bucket, key = cls.get_client_and_target()
         response = client.get_object(Bucket=bucket, Key=key)
         if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
-            raise RuntimeError(f"Failure to download form configuration: {response}")
+            raise RuntimeError(f"Failure to download configuration: {response}")
         form_data = json.load(response["Body"])
         response["Body"].close()
         cls.load_config_from_json(form_data)
@@ -111,7 +111,7 @@ class FormContext:
 
     @classmethod
     def put_config_to_aws(cls):
-        content = [asdict(form_data) for form_data in cls.known_forms.values()]
+        content = [asdict(form_data) for form_data in cls.known_hashes.values()]
         if not content:
             raise ValueError("Saving an empty config not allowed")
         body = (json.dumps(content, indent=2) + "\n").encode("utf-8")
@@ -129,9 +129,9 @@ class FormContext:
     @classmethod
     def set(cls, name: str):
         """Set the current context by name."""
-        cls.current = cls.known_forms.get(name)
+        cls.current = cls.known_hashes.get(name)
         if not cls.current:
-            raise ValueError(f"Not a known form: {name}")
+            raise ValueError(f"Not a known context: {name}")
         # print(f"Form context set to {name}.")
 
     @classmethod
@@ -142,13 +142,16 @@ class FormContext:
         return cls.current.name
 
     @classmethod
-    def lookup(cls, url: str) -> Optional[str]:
+    def lookup_form(cls, url: str) -> Optional[str]:
         """
-        Lookup the name of the form in the URL.
-        Returns none if it's not a known form URL.
+        Look up a matching context from a hash type
+        and an optional form URL, returning None if
+        there is no match.
         """
         base = "https://actionnetwork.org/api/v2/forms/"
-        for name, data in cls.known_forms.items():
+        for name, data in cls.known_hashes.items():
+            if data.an_form_id is None:
+                continue
             if url.startswith(base + data.an_form_id):
                 return name
         return None
@@ -206,7 +209,7 @@ class FormContext:
 
     @classmethod
     def initialize(cls):
-        if not cls.known_forms:
+        if not cls.known_hashes:
             form_path = env() is Environment.DEV and os.getenv("FORM_PATH")
             if form_path:
                 cls.load_config_locally(form_path)
@@ -215,4 +218,4 @@ class FormContext:
 
 
 # initialize on load
-FormContext.initialize()
+HashContext.initialize()
