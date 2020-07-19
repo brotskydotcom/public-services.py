@@ -31,7 +31,7 @@ from dateutil.parser import parse
 from dateutil.tz import gettz
 from haleasy import HALEasy, LinkNotFoundError
 
-from .constants import HashContext as HC
+from .constants import MapContext as MC
 
 
 class ANHash(HALEasy):
@@ -61,21 +61,27 @@ class ANHash(HALEasy):
                     self.form_name = "donation"
                     items.append(self)
                 else:
-                    try:
-                        form_url = self.link(rel="osdi:form").href
-                        if form_name := HC.lookup_form(form_url):
+                    if form_url := self.get_link_url("osdi:form"):
+                        if form_name := MC.lookup_form_url(form_url):
                             self.form_name = form_name
                             items.append(self)
-                    except LinkNotFoundError:
-                        pass
         return items
+
+    def get_link_url(self, rel: str) -> Optional[str]:
+        try:
+            return self.link(rel=rel).href
+        except LinkNotFoundError:
+            return None
+
+    def get_link_urls(self, rel: str) -> List[str]:
+        return [link.href for link in self.links(rel=rel)]
 
 
 @dataclass
 class ATRecord:
     key: str
     mod_date: datetime
-    core_fields: Dict[str, str]
+    core_fields: Dict[str, Any]
     custom_fields: Dict[str, Any]
     record_id: Optional[str] = ""
     at_match: Optional[ATRecord] = None
@@ -108,10 +114,11 @@ class ATRecord:
 
     @classmethod
     def from_record(cls, record_data: Dict) -> Optional[ATRecord]:
+        key = MC.an_key_field()
         custom_fields = dict(record_data["fields"])
-        core_field_map = HC.core_field_map()
-        if not custom_fields.get(core_field_map["Email"]):
-            print(f"Airtable record has no Email field; skipping it: {record_data}")
+        core_field_map = MC.core_field_map()
+        if not custom_fields.get(core_field_map[key]):
+            print(f"Airtable record has no {key} field; skipping it: {record_data}")
             return None
         if not custom_fields.get(core_field_map["Timestamp (EST)"]):
             print(f"Airtable record has no Timestamp field; adding it: {record_data}")
@@ -121,11 +128,7 @@ class ATRecord:
             if (value := custom_fields.get(at_name)) is not None:
                 core_fields[an_name] = value
                 del custom_fields[at_name]
-        result = cls._from_fields(
-            key=next(iter(core_field_map.keys())),
-            core=core_fields,
-            custom=custom_fields,
-        )
+        result = cls._from_fields(key=key, core=core_fields, custom=custom_fields,)
         result.record_id = record_data["id"]
         return result
 
@@ -139,10 +142,12 @@ class ATRecord:
         addresses = sub_data["postal_addresses"]
         address = next((a for a in addresses if a.get("primary")), addresses[0])
         street = address.get("address_lines", [""])[0]
+        first, last = sub_data.get("given_name", ""), sub_data.get("family_name", "")
         an_core_fields = {
             "Email": email["address"],
-            "First name": sub_data.get("given_name", ""),
-            "Last name": sub_data.get("family_name", ""),
+            "First name": first,
+            "Last name": last,
+            "Full name": f"{first} {last}",
             "Address": street,
             "City": address.get("locality", ""),
             "State": address.get("region", ""),
@@ -150,7 +155,7 @@ class ATRecord:
             "Timestamp (EST)": cls.convert_to_est(sub_data["modified_date"]),
         }
         core_fields: Dict[str, str] = {}
-        core_field_map = HC.core_field_map()
+        core_field_map = MC.core_field_map()
         for an_name, an_value in an_core_fields.items():
             target_name = core_field_map.get(an_name)
             if target_name:
@@ -158,7 +163,7 @@ class ATRecord:
         custom_fields: Dict[str, Any] = {}
         for an_name, an_value in sub_data["custom_fields"].items():
             cls.an_custom_fields[an_name] = cls.an_custom_fields.get(an_name, 0) + 1
-            target_name = HC.target_custom_field(an_name)
+            target_name = MC.target_custom_field(an_name)
             if target_name:
                 custom_fields[target_name] = an_value
         return cls._from_fields(key="Email", core=core_fields, custom=custom_fields)
@@ -168,7 +173,7 @@ class ATRecord:
         # key: str = item["identifiers"][0]
         donation_url: str = item.link(rel="self").href
         key = donation_url[donation_url.rfind("/") + 1 :]
-        # donations are never updated - the mod date is from the donor
+        # donations are never updated - the mod date is from the donor or amount
         create_date = cls.convert_to_est(item["created_date"])
         # find the amount
         amount = float(item["amount"])
@@ -177,14 +182,6 @@ class ATRecord:
             return None
         if (currency := item["currency"]) != "usd":
             print(f"Donation {key} currency ({currency}) is unexpected.")
-        # compare with EPP total
-        # total = 0
-        # for part in item["recipients"]:
-        #     if part["display_name"] == "Everyday People PAC":
-        #         total += float(part["amount"])
-        # if total != amount:
-        #     print(f"Donation's EPP portion ({total}) doesn't match total ({amount})")
-        #     print(f"Full recipient list is: {item['recipients']}")
         # find the recurrence
         if item["action_network:recurrence"]["recurring"]:
             period = item["action_network:recurrence"]["period"]
@@ -217,15 +214,13 @@ class ATRecord:
 
     def add_core_fields(self, updates: Dict[str, Any]):
         # Update all the core fields that have changed.
-        core_field_map = HC.core_field_map()
-        updates.update(
-            (at_name, self.core_fields[an_name])
-            for an_name, at_name in core_field_map.items()
-            if self.core_fields[an_name] != self.at_match.core_fields[an_name]
-        )
+        for an_name, at_name in MC.core_field_map().items():
+            if val := self.core_fields.get(an_name):
+                if val != self.at_match.core_fields.get(an_name):
+                    updates.update({at_name: val})
 
     def all_fields(self) -> Dict[str, Any]:
-        core_field_map = HC.core_field_map()
+        core_field_map = MC.core_field_map()
         core_fields = {
             core_field_map[k]: v
             for k, v in self.core_fields.items()
@@ -238,7 +233,7 @@ class ATRecord:
         if not self.at_match:
             raise ValueError("Can't find updates without a matching record")
         if self.mod_date <= self.at_match.mod_date:
-            # never update from an older AN record
+            # never update except from a strictly newer AN record
             return {}
         an_fields = self.custom_fields
         at_fields = self.at_match.custom_fields
@@ -250,6 +245,46 @@ class ATRecord:
         if updates or not an_fields:
             self.add_core_fields(updates)
         return updates
+
+
+def insert_or_update_record(an_record: ATRecord):
+    """Given an AN record for an already-set context, insert or update Airtable"""
+    at_key, at_base, at_table, at_typecast = MC.at_connect_info()
+    at = Airtable(at_base, at_table, api_key=at_key)
+    if record_dict := at.match(MC.at_key_field(), an_record.key):
+        print(f"Found existing record for {an_record.key}.")
+        if at_record := ATRecord.from_record(record_dict):
+            an_record.at_match = at_record
+        else:
+            raise ValueError(f"Matching record is not valid")
+        updates = an_record.find_at_field_updates()
+        if updates:
+            print(f"Updating {len(updates)} fields in record.")
+            at.update(at_record.record_id, updates, typecast=at_typecast)
+        else:
+            print(f"No fields need update in record.")
+    else:
+        print(f"Uploading new record for {an_record.key}.")
+        at.insert(an_record.all_fields(), typecast=at_typecast)
+
+
+def fetch_all_records() -> Dict[str, ATRecord]:
+    """
+    Get all records from Airtable, returning a map from key value to record
+
+    If more than one record has a given key, the last one fetched is kept.
+    """
+    record_type = MC.get()
+    print(f"Looking for {record_type} records...")
+    at_key, at_base, at_table, _ = MC.at_connect_info()
+    at = Airtable(at_base, at_table, api_key=at_key)
+    results: Dict[str, ATRecord] = {}
+    for record_dict in at.get_all():
+        record = ATRecord.from_record(record_dict)
+        if record:
+            results.update({record.key: record})
+    print(f"Found {len(results)} {record_type} record(s).")
+    return results
 
 
 def compare_record_maps(
@@ -287,32 +322,16 @@ def compare_record_maps(
     return result
 
 
-def fetch_all_records() -> Dict[str, ATRecord]:
-    """
-    Get application records from Airtable.
-    Returns them in a map from email (key) to record.
-    """
-    at_key, at_base, at_table, _ = HC.at_connect_info()
-    print(f"Looking for {HC.get()} records...")
-    at = Airtable(at_base, at_table, api_key=at_key)
-    results: Dict[str, ATRecord] = {}
-    for record_dict in at.get_all():
-        record = ATRecord.from_record(record_dict)
-        if record:
-            results.update({record.key: record})
-    print(f"Found {len(results)} {HC.get()} record(s).")
-    return results
-
-
 def make_record_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
     """Update Airtable from newer Action Network records"""
-    at_key, at_base, at_table, at_typecast = HC.at_connect_info()
+    record_type = MC.get()
+    at_key, at_base, at_table, at_typecast = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
     an_only = comparison_map["an_only"]
     did_update = False
     if an_only:
         did_update = True
-        print(f"Updating {HC.get()} records...")
+        print(f"Doing updates for {record_type} records...")
         print(f"Uploading {len(an_only)} new record(s)...")
         records = [r.all_fields() for r in an_only.values()]
         at.batch_insert(records, typecast=at_typecast)
@@ -325,12 +344,12 @@ def make_record_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
                 update_map[record.at_match.record_id] = updates
         if update_map:
             if not did_update:
-                print(f"Updating {HC.get()} records...")
+                print(f"Doing updates for {record_type} records...")
             did_update = True
             print(f"Updating {len(update_map)} existing record(s)...")
             for i, (record_id, updates) in enumerate(update_map.items()):
                 at.update(record_id, updates, typecast=at_typecast)
                 if (i + 1) % 10 == 0:
-                    print(f"Processed {i+1}/{len(an_newer)}...")
+                    print(f"Processed {i+1}/{len(update_map)}...")
     if not did_update:
-        print(f"No updates required for {HC.get()} records.")
+        print(f"No updates required for {record_type} records.")

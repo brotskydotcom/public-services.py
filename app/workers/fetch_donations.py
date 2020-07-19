@@ -26,7 +26,7 @@ import requests
 from ..utils import (
     env,
     Environment,
-    HashContext as HC,
+    MapContext as MC,
     ATRecord,
     ANHash,
     fetch_all_records,
@@ -41,9 +41,9 @@ def fetch_donation_records() -> Tuple[Dict[str, ATRecord], Dict[str, ATRecord]]:
     making a key-record map of the results.
     Returns them in a tuple (donors, donations).
     """
-    HC.set("donor")
+    MC.set("person")
     donor_records = fetch_all_records()
-    HC.set("donation")
+    MC.set("donation")
     donation_records = fetch_all_records()
     return donor_records, donation_records
 
@@ -55,10 +55,10 @@ def fetch_donations() -> Dict[str, List[ATRecord]]:
     the donations made by that donor.
     """
     print(f"Creating records for donations...")
-    HC.set("donation")
+    MC.set("donation")
     session = requests.session()
-    session.headers = HC.an_headers()
-    donations_url = HC.an_base + "/donations"
+    session.headers = MC.an_headers()
+    donations_url = MC.an_base + "/donations"
     donors: Dict[str, List[ATRecord]] = {}
     donation_count = 0
     # fetch and process each page of donations
@@ -70,16 +70,17 @@ def fetch_donations() -> Dict[str, List[ATRecord]]:
         response.encoding = "utf-8"
         donations = response.json()
         item = ANHash.from_parts("donation page", donations)
-        links = item.links(rel="osdi:donations")
+        donation_urls = item.get_link_urls("osdi:donations")
         total_pages = item.properties()["total_pages"]
         print(
-            f"Processing {len(links)} donations " f"on page {page} of {total_pages}..."
+            f"Processing {len(donation_urls)} donations "
+            f"on page {page} of {total_pages}..."
         )
         page += 1
-        for i, link in enumerate(links):
-            response = session.get(link.href)
-            if response.status_code >= 300:
-                print(f"Response error on item {i}: {response.status_code}.")
+        for i, link in enumerate(donation_urls):
+            response = session.get(link)
+            if response.status_code != 200:
+                print(f"Response error on item {i}: {response.status_code}")
                 print(f"Donation url was: {link}")
                 continue
             response.encoding = "utf-8"
@@ -89,14 +90,17 @@ def fetch_donations() -> Dict[str, List[ATRecord]]:
             if not donation_record:
                 print(f"Invalid donation hash, skipping: {donation}")
                 continue
+            donor_url = item.get_link_url("osdi:person")
+            if not donor_url:
+                print(f"No donor link, skipping: {donation}")
+                continue
             donation_count += 1
-            donor_url = item.link(rel="osdi:person").href
             if val := donors.get(donor_url):
                 val.append(donation_record)
             else:
                 donors[donor_url] = [donation_record]
             if (i + 1) % 10 == 0:
-                print(f"Processed {i + 1}/{len(links)}...")
+                print(f"Processed {i + 1}/{len(donation_urls)}...")
     print(f"Created {donation_count} donation records for {len(donors)} donors.")
     return donors
 
@@ -112,9 +116,9 @@ def fetch_donors(
     donors and the donations.
     """
     print(f"Creating records for {len(donor_map)} donors...")
-    HC.set("donor")
+    MC.set("person")
     session = requests.session()
-    session.headers = HC.an_headers()
+    session.headers = MC.an_headers()
     donors: Dict[str, ATRecord] = {}
     donations: Dict[str, ATRecord] = {}
     for i, (url, donation_records) in enumerate(donor_map.items()):
@@ -145,9 +149,9 @@ def transfer_all_donations():
     donor_an_map, donation_an_map = fetch_donors(donor_url_map)
     donor_comparison_map = compare_record_maps(donor_at_map, donor_an_map)
     donation_comparison_map = compare_record_maps(donation_at_map, donation_an_map)
-    HC.set("donor")
+    MC.set("person")
     make_record_updates(donor_comparison_map)
     print(f"Finished processing donors.")
-    HC.set("donation")
+    MC.set("donation")
     make_record_updates(donation_comparison_map)
     print(f"Finished processing donations.")
