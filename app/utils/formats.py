@@ -249,10 +249,11 @@ class ATRecord:
 
 def insert_or_update_record(an_record: ATRecord):
     """Given an AN record for an already-set context, insert or update Airtable"""
+    record_type = MC.get()
     at_key, at_base, at_table, at_typecast = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
     if record_dict := at.match(MC.at_key_field(), an_record.key):
-        print(f"Found existing record for {an_record.key}.")
+        print(f"Found existing {record_type} record for {an_record.key}.")
         if at_record := ATRecord.from_record(record_dict):
             an_record.at_match = at_record
         else:
@@ -264,7 +265,7 @@ def insert_or_update_record(an_record: ATRecord):
         else:
             print(f"No fields need update in record.")
     else:
-        print(f"Uploading new record for {an_record.key}.")
+        print(f"Uploading new {record_type} record for {an_record.key}.")
         at.insert(an_record.all_fields(), typecast=at_typecast)
 
 

@@ -109,14 +109,16 @@ async def transfer_person(item: ANHash) -> str:
 
 
 async def transfer_all_webhook_items():
-    print(f"Processing all webhook item lists...")
     master_list: str = redis.get_key("Submitted Items")
     try:
-        for i in range(await redis.llen(master_list)):
+        count = await redis.db.llen(master_list)
+        print(f"Processing {count} webhook item list(s)...")
+        for i in range(count):
             try_list = await redis.db.lpop(master_list, encoding="ascii")
             retry_list = await process_items(try_list)
             if retry_list:
                 await redis.db.rpush(master_list, try_list)
+        new_count = await redis.db.llen(master_list)
     except redis.Error:
         log_error(f"Error fetching or saving webhook item list")
-    print(f"Processed all webhook item lists.")
+    print(f"Processed {count} webhook item list(s); got {new_count} retry list(s).")

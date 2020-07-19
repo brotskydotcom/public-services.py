@@ -192,5 +192,65 @@
       "title": "Everyday People PAC",
       "url": "https://actionnetwork.org/groups/everyday-people-pac"
     }
+  },
+  "valid donation sample":
+  {
+    "osdi:donation": {
+      "identifiers": [
+        "action_network:fcfbd344-942e-45ca-a04f-7438f797fac3"
+      ],
+      "created_date": "2019-10-09T02:03:07Z",
+      "modified_date": "2019-10-09T02:03:12Z",
+      "currency": "usd",
+      "recipients": [
+        {
+          "display_name": "Everyday People PAC",
+          "amount": "100.00"
+        }
+      ],
+      "payment": {
+        "method": "Credit Card",
+        "reference_number": "fcfbd344-942e-45ca-a04f-7438f797fac3",
+        "authorization_stored": false
+      },
+      "action_network:recurrence": {
+        "recurring": false
+      },
+      "action_network:person_id": "14bee58e-ba50-11e3-a134-12313d1576ca",
+      "action_network:fundraising_page_id": "34c0efd5-4dce-449e-afff-ffd211074250",
+      "action_network:referrer_data": {
+        "source": "widget",
+        "referrer": "group-everyday-people-pac",
+        "website": "www.everydaypeoplepac.org"
+      },
+      "_links": {
+        "self": {
+          "href": "https://actionnetwork.org/api/v2/donations/fcfbd344-942e-45ca-a04f-7438f797fac3"
+        },
+        "osdi:fundraising_page": {
+          "href": "https://actionnetwork.org/api/v2/fundraising_pages/34c0efd5-4dce-449e-afff-ffd211074250"
+        },
+        "osdi:person": {
+          "href": "https://actionnetwork.org/api/v2/people/14bee58e-ba50-11e3-a134-12313d1576ca"
+        },
+        "curies": [
+          {
+            "name": "osdi",
+            "href": "https://actionnetwork.org/docs/v2/{rel}",
+            "templated": true
+          },
+          {
+            "name": "action_network",
+            "href": "https://actionnetwork.org/docs/v2/{rel}",
+            "templated": true
+          }
+        ]
+      },
+      "amount": "100.00"
+    },
+    "action_network:sponsor": {
+      "title": "Everyday People PAC",
+      "url": "https://actionnetwork.org/groups/everyday-people-pac"
+    }
   }
 }
