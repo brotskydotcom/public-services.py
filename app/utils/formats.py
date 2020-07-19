@@ -180,7 +180,7 @@ class ATRecord:
         if amount == 0:
             print(f"Donation's amount is 0, ignoring it.")
             return None
-        if (currency := item["currency"]) != "usd":
+        if (currency := item["currency"]).lower() != "usd":
             print(f"Donation {key} currency ({currency}) is unexpected.")
         # find the recurrence
         if item["action_network:recurrence"]["recurring"]:
