@@ -206,6 +206,35 @@ class ATRecord:
             custom={},
         )
 
+    @classmethod 
+    def from_mobilize(cls, sub_data: Dict[str, str]) -> ATRecord:
+        timeslot_id = sub_data["timeslot id"]
+        if timeslot_id == "":
+            sub_data["shift id"] = sub_data["email"] + "-" + sub_data["signup created time"]
+        else: 
+            sub_data["shift id"] = sub_data["email"] + "-" + sub_data["timeslot id"]
+        updated_time = sub_data["signup updated time"]
+        sub_data["Timestamp (EST)"] = updated_time
+        time_str = cls.convert_to_est(updated_time)
+        converted_time = parse(time_str, tzinfos={"EST": cls.est})
+
+        custom_map = MC.custom_field_map()
+        core_map = MC.core_field_map()
+
+        core_fields = {}
+        custom_fields = {}
+        for mobilize_name, airtable_name in core_map.items():
+            core_fields[airtable_name] = sub_data[mobilize_name]
+        for mobilize_name, airtable_name in custom_map.items():
+            custom_fields[airtable_name] = sub_data[mobilize_name]
+
+        return cls(
+            key=sub_data["shift id"], 
+            mod_date=converted_time,
+            core_fields=core_fields,
+            custom_fields=custom_fields,
+        )
+
     @classmethod
     def convert_to_est(cls, utc_str: str) -> str:
         utc_time = parse(utc_str)
