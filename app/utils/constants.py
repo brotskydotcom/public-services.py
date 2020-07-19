@@ -86,7 +86,7 @@ class MapContext:
             if lookup_env(d.get("env")) is env():
                 del d["env"]  # env is not part of the form data
                 contexts[d["name"]] = cls.MapData(**d)
-        if not contexts.get("person") and contexts.get("donation"):
+        if not (contexts.get("person") and contexts.get("donation")):
             raise ValueError(f"Contexts must include 'person' and 'donation'")
         cls.known_maps = contexts
         print(f"Loaded {len(contexts)} contexts in {env().name} environment.")
