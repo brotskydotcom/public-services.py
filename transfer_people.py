@@ -19,7 +19,12 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
+import sys
 
-from .main import app
-from .webhook_transfer import transfer_all_webhook_items
-from .fetch_people import transfer_people
+from app.workers.fetch_people import transfer_people
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        transfer_people(sys.argv[1:])
+    else:
+        transfer_people()

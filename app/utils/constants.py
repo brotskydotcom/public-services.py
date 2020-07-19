@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import ClassVar, Dict, Optional, Any, List, Tuple
 
 import botocore.client
@@ -32,31 +32,31 @@ import botocore.session
 from app.utils import env, Environment, lookup_env
 
 
-class FormContext:
+class MapContext:
     """
     This is a no-instance class.  It maintains context relevant
-    to each of the known AN forms, maintains a notion of the
-    "current" form type being processed, and vends the
-    context data to callers.
+    to each of the known AN hash types and their connected forms,
+    maintains a notion of the "current" hash/form pair being processed,
+    and vends the context data to callers.
     """
 
     an_base: ClassVar[str] = "https://actionnetwork.org/api/v2"
 
     @dataclass
-    class FormData:
+    class MapData:
         name: str
         an_headers: Dict[str, str]
-        an_form_id: str
-        an_core_field_map: Dict[str, str]
-        an_custom_field_map: Dict[str, str]
         at_account_key: str
         at_database_key: str
         at_table_name: str
         at_typecast: bool
+        an_core_field_map: Dict[str, str]
+        an_forms: Dict[str, str] = field(default_factory=dict)
+        an_custom_field_prefixes: List[str] = field(default_factory=list)
+        an_custom_field_map: Dict[str, str] = field(default_factory=dict)
 
-    known_forms: ClassVar[Dict[str, FormData]] = {}
-
-    current: ClassVar[Optional[FormData]] = None
+    known_maps: ClassVar[Dict[str, MapData]] = {}
+    current: ClassVar[Optional[MapData]] = None
 
     @classmethod
     def get_client_and_target(cls) -> Tuple[botocore.client.BaseClient, str, str]:
@@ -64,7 +64,7 @@ class FormContext:
         secret = os.getenv("AWS_SECRET_ACCESS_KEY", "")
         region = os.getenv("AWS_REGION_NAME", "")
         bucket = os.getenv("AWS_BUCKET_NAME", "public-services.brotsky.net")
-        path = os.getenv("AWS_CONFIG_PATH", "config/contexts.v2.json")
+        path = os.getenv("AWS_CONFIG_PATH", "config/mappings.v1.json")
         if not key or not secret or not region or not bucket or not path:
             raise EnvironmentError("Complete AWS connect info not found")
         session = botocore.session.get_session()
@@ -81,15 +81,15 @@ class FormContext:
 
     @classmethod
     def load_config_from_json(cls, form_data: List[Dict[str, Any]]):
-        forms = {}
+        contexts = {}
         for d in form_data:
             if lookup_env(d.get("env")) is env():
-                del d["env"]
-                forms[d["name"]] = cls.FormData(**d)
-        if not forms:
-            raise RuntimeError(f"Form configuration is empty")
-        cls.known_forms = forms
-        print(f"Loaded {len(forms)} forms.")
+                del d["env"]  # env is not part of the form data
+                contexts[d["name"]] = cls.MapData(**d)
+        if not contexts.get("person") and contexts.get("donation"):
+            raise ValueError(f"Contexts must include 'person' and 'donation'")
+        cls.known_maps = contexts
+        print(f"Loaded {len(contexts)} contexts in {env().name} environment.")
 
     @classmethod
     def load_config_from_aws(cls):
@@ -97,7 +97,7 @@ class FormContext:
         client, bucket, key = cls.get_client_and_target()
         response = client.get_object(Bucket=bucket, Key=key)
         if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
-            raise RuntimeError(f"Failure to download form configuration: {response}")
+            raise RuntimeError(f"Failure to download configuration: {response}")
         form_data = json.load(response["Body"])
         response["Body"].close()
         cls.load_config_from_json(form_data)
@@ -111,7 +111,7 @@ class FormContext:
 
     @classmethod
     def put_config_to_aws(cls):
-        content = [asdict(form_data) for form_data in cls.known_forms.values()]
+        content = [asdict(form_data) for form_data in cls.known_maps.values()]
         if not content:
             raise ValueError("Saving an empty config not allowed")
         body = (json.dumps(content, indent=2) + "\n").encode("utf-8")
@@ -127,14 +127,6 @@ class FormContext:
             raise RuntimeError(f"Failed to write config: {response}")
 
     @classmethod
-    def set(cls, name: str):
-        """Set the current context by name."""
-        cls.current = cls.known_forms.get(name)
-        if not cls.current:
-            raise ValueError(f"Not a known form: {name}")
-        # print(f"Form context set to {name}.")
-
-    @classmethod
     def get(cls) -> str:
         """Get the name of the current context"""
         if not cls.current:
@@ -142,15 +134,23 @@ class FormContext:
         return cls.current.name
 
     @classmethod
-    def lookup(cls, url: str) -> Optional[str]:
+    def set(cls, name: str):
+        """Set the current context by name or form name."""
+        cls.current = cls.known_maps.get(name)
+        if not cls.current:
+            raise ValueError(f"Not a known context: {name}")
+
+    @classmethod
+    def lookup_form_url(cls, url: str) -> Optional[str]:
         """
-        Lookup the name of the form in the URL.
-        Returns none if it's not a known form URL.
+        Look up a matching context from a form URL,
+        returning None if there is no match.
         """
-        base = "https://actionnetwork.org/api/v2/forms/"
-        for name, data in cls.known_forms.items():
-            if url.startswith(base + data.an_form_id):
-                return name
+        base = cls.an_base + "/forms/"
+        for _, data in cls.known_maps.items():
+            for form_name, form_id in data.an_forms.items():
+                if url.startswith(base + form_id):
+                    return form_name
         return None
 
     @classmethod
@@ -171,19 +171,42 @@ class FormContext:
         """
         if not cls.current:
             raise ValueError("You must set the context before using it")
-        # fields prefixed with the form name plus underscore carry over as is
-        if field_name.startswith(cls.current.name + "_"):
-            return field_name
+        # add fields with one of the known custom field prefixes
+        for prefix in cls.current.an_custom_field_prefixes:
+            if field_name.startswith(prefix):
+                return field_name
         # otherwise look the field up
         return cls.current.an_custom_field_map.get(field_name)
 
     @classmethod
-    def an_submissions_url(cls) -> str:
-        """Return the url for AN submissions on the current form."""
+    def an_key_field(cls) -> str:
+        """Returns the AN-side key field"""
         if not cls.current:
             raise ValueError("You must set the context before using it")
-        base = "https://actionnetwork.org/api/v2/forms/"
-        return base + cls.current.an_form_id + "/submissions/"
+        return next(iter(cls.current.an_core_field_map.keys()))
+
+    @classmethod
+    def at_key_field(cls) -> str:
+        """Returns the AT-side key field"""
+        if not cls.current:
+            raise ValueError("You must set the context before using it")
+        return next(iter(cls.current.an_core_field_map.values()))
+
+    @classmethod
+    def an_submissions_url(cls, form_name: str) -> Optional[str]:
+        """Return the url for AN submissions on the given form."""
+        if not cls.current:
+            raise ValueError("You must set the context before using it")
+        base = cls.an_base + "/forms/"
+        form_id = cls.current.an_forms[form_name]
+        return base + form_id + "/submissions/"
+
+    @classmethod
+    def an_people_url(cls) -> str:
+        """Return the url for AN people records."""
+        if not cls.current:
+            raise ValueError("You must set the context before using it")
+        return cls.an_base + "/people"
 
     @classmethod
     def an_headers(cls) -> Dict:
@@ -206,7 +229,7 @@ class FormContext:
 
     @classmethod
     def initialize(cls):
-        if not cls.known_forms:
+        if not cls.known_maps:
             form_path = env() is Environment.DEV and os.getenv("FORM_PATH")
             if form_path:
                 cls.load_config_locally(form_path)
@@ -215,4 +238,4 @@ class FormContext:
 
 
 # initialize on load
-FormContext.initialize()
+MapContext.initialize()

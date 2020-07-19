@@ -29,7 +29,7 @@ from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
 from ..db import redis
-from ..utils import ANSubmission, log_error, env, seq_id, Environment
+from ..utils import ANHash, log_error, env, seq_id, Environment
 from ..workers import transfer_all_webhook_items
 
 an = APIRouter()
@@ -77,7 +77,7 @@ async def receive_notification(body: List[Dict], delay_processing: bool = False)
     """
     print(f"Received webhook with {len(body)} hash(es).")
     ani_key: str = redis.get_key("Submitted Items")
-    items = ANSubmission.find_items(data=body)
+    items = ANHash.find_items(data=body)
     if items:
         values = [pickle.dumps((item.form_name, item.body)) for item in items]
         list_key = ":".join((env().name, seq_id(), "0"))
