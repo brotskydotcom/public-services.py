@@ -164,6 +164,17 @@ class MapContext:
         return cls.current.an_core_field_map
 
     @classmethod
+    def custom_field_map(cls) -> Dict[str, str]:
+        """
+        Returns the AT -> AN field name map for the custom fields.
+        Uses the current context to find the field map.
+        """
+        if not cls.current:
+            raise ValueError("You must set the context before using it")
+        return cls.current.an_custom_field_map
+
+
+    @classmethod
     def target_custom_field(cls, field_name: str) -> Optional[str]:
         """
         Returns the AT target custom field name for an AN field name, if any.
