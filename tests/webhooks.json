@@ -201,7 +201,7 @@
       ],
       "created_date": "2019-10-09T02:03:07Z",
       "modified_date": "2019-10-09T02:03:12Z",
-      "currency": "usd",
+      "currency": "USD",
       "recipients": [
         {
           "display_name": "Everyday People PAC",
