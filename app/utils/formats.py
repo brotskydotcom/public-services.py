@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Any, List, Optional, ClassVar
+from typing import Dict, Any, List, Optional, ClassVar, Tuple
 
 from airtable import Airtable
 from dateutil.parser import parse
@@ -207,32 +207,71 @@ class ATRecord:
         )
 
     @classmethod 
-    def from_mobilize(cls, sub_data: Dict[str, str]) -> ATRecord:
-        timeslot_id = sub_data["timeslot id"]
+    def from_mobilize(cls, data: Dict[str, str]) -> ATRecord:
+        timeslot_id = data["timeslot id"]
         if timeslot_id == "":
-            sub_data["shift id"] = sub_data["email"] + "-" + sub_data["signup created time"]
+            data["shift id"] = data["email"] + "-" + data["signup created time"]
         else: 
-            sub_data["shift id"] = sub_data["email"] + "-" + sub_data["timeslot id"]
-        updated_time = sub_data["signup updated time"]
-        sub_data["Timestamp (EST)"] = updated_time
+            data["shift id"] = data["email"] + "-" + data["timeslot id"]
+
+        if data["attended"] == "":
+            data["attended"] = None
+        if data["rating"] == "":
+            data["rating"] = None
+        if data["Spanish"] == "":
+            data["Spanish"] = None
+        if data["status"] == "":
+            data["status"] = None
+
+        updated_time = data["signup updated time"]
+        est_time_str = cls.convert_to_est(updated_time)
+        data["Timestamp (EST)"] = est_time_str
+
+        core_fields: Dict[str, str] = {
+            "shift id": data["shift id"],
+            "Timestamp (EST)": est_time_str
+        }
+
+        custom_fields: Dict[str, Any] = {}
+        for name, value in data.items():
+            target_name = MC.target_custom_field(name)
+            if target_name:
+                custom_fields[target_name] = value
+
+        return cls._from_fields(
+            key="shift id",
+            core=core_fields,
+            custom=custom_fields
+        )
+    
+    @classmethod 
+    def from_mobilize_person(cls, data: Dict[str, str]) -> ATRecord:
+        updated_time = data["signup updated time"]
+        data["Timestamp (EST)"] = updated_time
         time_str = cls.convert_to_est(updated_time)
-        converted_time = parse(time_str, tzinfos={"EST": cls.est})
 
-        custom_map = MC.custom_field_map()
-        core_map = MC.core_field_map()
+        an_core_fields = {
+            "Email": data["email"],
+            "First name": data["first name"],
+            "Last name": data["last name"],
+            "Full name": data["first name"] + " " + data["last name"],
+            "Address": "",
+            "City": "",
+            "State": "",
+            "Zip Code": "",
+            "Timestamp (EST)": time_str,
+        }
+        person_core_fields: Dict[str, str] = {}
+        person_core_field_map = MC.core_field_map()
+        for an_name, an_value in an_core_fields.items():
+            target_name = person_core_field_map.get(an_name)
+            if target_name:
+                person_core_fields[an_name] = an_value
 
-        core_fields = {}
-        custom_fields = {}
-        for mobilize_name, airtable_name in core_map.items():
-            core_fields[airtable_name] = sub_data[mobilize_name]
-        for mobilize_name, airtable_name in custom_map.items():
-            custom_fields[airtable_name] = sub_data[mobilize_name]
-
-        return cls(
-            key=sub_data["shift id"], 
-            mod_date=converted_time,
-            core_fields=core_fields,
-            custom_fields=custom_fields,
+        return cls._from_fields(
+            key="Email",
+            core=person_core_fields, 
+            custom={}
         )
 
     @classmethod
