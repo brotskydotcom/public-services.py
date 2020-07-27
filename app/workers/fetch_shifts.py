@@ -33,13 +33,13 @@ from ..utils import (
     make_record_updates,
 )
 
-def fetch_mobilize_shifts(csv_name: str) -> Dict[str, ATRecord]:
+def fetch_mobilize_shifts(csv_name: str) -> Tuple[Dict[str, ATRecord], Dict[str, ATRecord]]:
     """
     Get application records from a Mobilize CSV.
     Returns them in a map from email-timeslot_id (key) to record.
     """
-    MC.set("shift")
-    shifts: Dict[str, ATRecord] = {} 
+    shifts: Dict[str, ATRecord] = {}
+    attendees: Dict[str, ATRecord] = {} 
     with open(csv_name) as csvfile:
         csv_reader = csv.reader(csvfile, delimiter=',', quotechar='"')
         headings = next(csv_reader)
@@ -48,19 +48,35 @@ def fetch_mobilize_shifts(csv_name: str) -> Dict[str, ATRecord]:
             for i, entry in enumerate(row):
                 heading = headings[i]
                 row_data[heading] = entry
-            record = ATRecord.from_mobilize(row_data)
-            shifts[record.key] = record
+            MC.set("shift")
+            shift_record = ATRecord.from_mobilize(row_data)
+
+            MC.set("person")
+            attendee_record = ATRecord.from_mobilize_person(row_data)
+
+            shifts[shift_record.key] = shift_record
+            attendees[attendee_record.key] = attendee_record
                         
     print(f"Created {len(shifts)} records for shifts.")
-    if env() is Environment.DEV:
-        ATRecord.dump_stats(len(shifts))
-    return shifts
+    return shifts, attendees
+
+def fetch_airtable_shift_records() -> Tuple[Dict[str, ATRecord], Dict[str, ATRecord]]:
+    MC.set("shift")
+    airtable_shifts = fetch_all_records()
+    MC.set("person")
+    airtable_people = fetch_all_records()
+    return airtable_shifts, airtable_people
 
 def transfer_shifts(csv_name: str):
     print(f"Transferring all shifts")
+    airtable_shifts, airtable_people = fetch_airtable_shift_records()  
+    shifts, attendees =  fetch_mobilize_shifts(csv_name)
+
+    MC.set("person")
+    people_comparison_map = compare_record_maps(airtable_people, attendees)
+    make_record_updates(people_comparison_map)
+
     MC.set("shift")
-    airtable_map = fetch_all_records()
-    mobilize_map=  fetch_mobilize_shifts(csv_name)
-    comparison_map = compare_record_maps(airtable_map, mobilize_map)
-    make_record_updates(comparison_map)
+    shift_comparison_map = compare_record_maps(airtable_shifts, shifts)
+    make_record_updates(shift_comparison_map)
     print(f"Finished processing shifts.")
