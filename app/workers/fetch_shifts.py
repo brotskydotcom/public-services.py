@@ -38,6 +38,7 @@ def fetch_mobilize_shifts(csv_name: str) -> Tuple[Dict[str, ATRecord], Dict[str,
     Get application records from a Mobilize CSV.
     Returns them in a map from email-timeslot_id (key) to record.
     """
+    print(f"Creating records for shifts and attendees...")
     shifts: Dict[str, ATRecord] = {}
     attendees: Dict[str, ATRecord] = {} 
     with open(csv_name) as csvfile:
@@ -58,13 +59,18 @@ def fetch_mobilize_shifts(csv_name: str) -> Tuple[Dict[str, ATRecord], Dict[str,
             attendees[attendee_record.key] = attendee_record
                         
     print(f"Created {len(shifts)} records for shifts.")
+    print(f"Created {len(attendees)} records for attendees.")
     return shifts, attendees
 
 def fetch_airtable_shift_records() -> Tuple[Dict[str, ATRecord], Dict[str, ATRecord]]:
+    print(f"Fetching Airtable records...")
     MC.set("shift")
     airtable_shifts = fetch_all_records()
     MC.set("person")
     airtable_people = fetch_all_records()
+
+    print(f"Fetched {len(airtable_shifts)} existing Airtable records for shifts.")
+    print(f"Fetched {len(airtable_people)} existing Airtable records for attendees.")
     return airtable_shifts, airtable_people
 
 def transfer_shifts(csv_name: str):

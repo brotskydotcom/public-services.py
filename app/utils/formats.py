@@ -215,8 +215,11 @@ class ATRecord:
 
     @classmethod 
     def from_mobilize(cls, data: Dict[str, str]) -> ATRecord:
-        if (timeslot_id := data.get("timeslot id")) and (event_id := data.get("event id")):
-            shift_id = f"{data['email']}-{timeslot_id}-{event_id}"
+        if event_id := data.get("event id"):
+            if timeslot_id := data.get("timeslot id"):
+                shift_id = f"{data['email']}-{event_id}-{timeslot_id}"
+            else:
+                shift_id = f"{data['email']}-{event_id}-{data['signup created time']}"
         else:
             shift_id = f"{data['email']}-{data['signup created time']}"
 
