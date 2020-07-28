@@ -50,11 +50,11 @@ def fetch_mobilize_shifts(csv_name: str) -> Tuple[Dict[str, ATRecord], Dict[str,
                 row_data[heading] = entry
             MC.set("shift")
             shift_record = ATRecord.from_mobilize(row_data)
+            shift_record.core_fields["email"] = [row_data["email"]]
+            shifts[shift_record.key] = shift_record
 
             MC.set("person")
             attendee_record = ATRecord.from_mobilize_person(row_data)
-
-            shifts[shift_record.key] = shift_record
             attendees[attendee_record.key] = attendee_record
                         
     print(f"Created {len(shifts)} records for shifts.")

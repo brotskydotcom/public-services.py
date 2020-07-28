@@ -208,27 +208,20 @@ class ATRecord:
 
     @classmethod 
     def from_mobilize(cls, data: Dict[str, str]) -> ATRecord:
-        timeslot_id = data["timeslot id"]
-        if timeslot_id == "":
-            data["shift id"] = data["email"] + "-" + data["signup created time"]
-        else: 
-            data["shift id"] = data["email"] + "-" + data["timeslot id"]
+        if (timeslot_id := data.get("timeslot id")) and (event_id := data.get("event id")):
+            shift_id = f"{data['email']}-{timeslot_id}-{event_id}"
+        else:
+            shift_id = f"{data['email']}-{data['signup created time']}"
 
-        if data["attended"] == "":
-            data["attended"] = None
-        if data["rating"] == "":
-            data["rating"] = None
-        if data["Spanish"] == "":
-            data["Spanish"] = None
-        if data["status"] == "":
-            data["status"] = None
+        for key in ["attended", "rating", "Spanish", "status"]:
+            if not data.get(key):
+                del data[key]  
 
         updated_time = data["signup updated time"]
         est_time_str = cls.convert_to_est(updated_time)
-        data["Timestamp (EST)"] = est_time_str
 
         core_fields: Dict[str, str] = {
-            "shift id": data["shift id"],
+            "shift id": shift_id,
             "Timestamp (EST)": est_time_str
         }
 
@@ -236,7 +229,7 @@ class ATRecord:
         for name, value in data.items():
             target_name = MC.target_custom_field(name)
             if target_name:
-                custom_fields[target_name] = value
+                custom_fields[name] = value
 
         return cls._from_fields(
             key="shift id",
@@ -246,27 +239,13 @@ class ATRecord:
     
     @classmethod 
     def from_mobilize_person(cls, data: Dict[str, str]) -> ATRecord:
-        updated_time = data["signup updated time"]
-        data["Timestamp (EST)"] = updated_time
-        time_str = cls.convert_to_est(updated_time)
-
-        an_core_fields = {
+        person_core_fields = {
             "Email": data["email"],
             "First name": data["first name"],
             "Last name": data["last name"],
             "Full name": data["first name"] + " " + data["last name"],
-            "Address": "",
-            "City": "",
-            "State": "",
-            "Zip Code": "",
-            "Timestamp (EST)": time_str,
+            "Timestamp (EST)": cls.convert_to_est(data["signup updated time"]),
         }
-        person_core_fields: Dict[str, str] = {}
-        person_core_field_map = MC.core_field_map()
-        for an_name, an_value in an_core_fields.items():
-            target_name = person_core_field_map.get(an_name)
-            if target_name:
-                person_core_fields[an_name] = an_value
 
         return cls._from_fields(
             key="Email",
