@@ -53,12 +53,19 @@ class ANHash(HALEasy):
         items = []
         for d in data:
             for k, v in d.items():
-                if k not in ("osdi:submission", "osdi:donation"):
+                if k not in (
+                    "osdi:submission",
+                    "osdi:donation",
+                    "action_network:upload",
+                ):
                     continue
                 self = cls("https://actionnetwork.org", json_str=json.dumps(v))
                 self.body = v
                 if k == "osdi:donation":
                     self.form_name = "donation"
+                    items.append(self)
+                elif k == "action_network:upload":
+                    self.form_name = "upload"
                     items.append(self)
                 else:
                     if form_url := self.get_link_url("osdi:form"):

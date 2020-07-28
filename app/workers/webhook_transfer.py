@@ -51,6 +51,9 @@ async def process_items(list_key: str) -> Optional[str]:
             if form_name == "donation":
                 print(f"Found donation item.")
                 await transfer_donation(item)
+            elif form_name == "upload":
+                print(f"Found upload item.")
+                await transfer_person(item)
             else:
                 print(f"Found {form_name} submission item.")
                 await transfer_person(item)
