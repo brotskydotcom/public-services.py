@@ -252,5 +252,61 @@
       "title": "Everyday People PAC",
       "url": "https://actionnetwork.org/groups/everyday-people-pac"
     }
+  },
+  "valid upload sample":
+  {
+    "action_network:upload": {
+      "created_date": "2018-11-07T19:49:26Z",
+      "modified_date": "2018-11-07T19:49:26Z",
+      "person": {
+        "created_date": "2018-11-07T17:56:40Z",
+        "modified_date": "2018-11-07T19:46:40Z",
+        "family_name": "Smith",
+        "postal_addresses": [
+          {
+            "primary": true,
+            "address_lines": [
+              "1600 Pennsylvania Ave NW"
+            ],
+            "locality": "Washington",
+            "postal_code": "20036",
+            "region": "District of Columbia",
+            "country": "US",
+            "location": {
+              "latitude": 41.2967,
+              "longitude": -73.6698,
+              "accuracy": "Approximate"
+            }
+          }
+        ],
+        "email_addresses": [
+          {
+            "primary": true,
+            "address": "jsmith@mail.com",
+            "status": "subscribed"
+          }
+        ],
+        "languages_spoken": [
+          "en"
+        ],
+        "custom_fields": {
+          "phone_number": "123.456.7890"
+        }
+      },
+      "action_network:referrer_data": {},
+      "add_tags": [
+        "volunteer",
+        "member"
+      ],
+      "_links": {
+        "osdi:person": {
+          "href": "https://actionnetwork.org/api/v2/people/14bee58e-ba50-11e3-a134-12313d1576ca"
+        }
+      }
+    },
+    "action_network:sponsor": {
+      "title": "Everyday People PAC",
+      "url": "https://actionnetwork.org/groups/everyday-people-pac"
+    }
   }
 }

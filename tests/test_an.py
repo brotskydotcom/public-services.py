@@ -183,13 +183,14 @@ def test_webhook_good_person(server, database):
     test_case = [
         test_cases["valid filled GRU data"],
         test_cases["valid donation sample"],
+        test_cases["valid upload sample"],
     ]
     endpoint = "/action_network/notification"
     response = requests.post(
         host + endpoint, json=test_case, headers={"Accept": "application/json"}
     )
-    time.sleep(5.0)  # give server chance to process webhook task
+    time.sleep(6.0)  # give server chance to process webhook task
     assert response.status_code == 200
-    assert response.json() == {"accepted": 2}
-    assert redis.db.llen(redis.get_key("Successfully processed")) == 2
+    assert response.json() == {"accepted": 3}
+    assert redis.db.llen(redis.get_key("Successfully processed")) == 3
     assert redis.db.llen(redis.get_key("Failed to process")) == 0
