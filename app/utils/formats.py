@@ -213,7 +213,7 @@ class ATRecord:
             custom={},
         )
 
-    @classmethod 
+    @classmethod
     def from_mobilize(cls, data: Dict[str, str]) -> ATRecord:
         if event_id := data.get("event id"):
             if timeslot_id := data.get("timeslot id"):
@@ -225,14 +225,14 @@ class ATRecord:
 
         for key in ["attended", "rating", "Spanish", "status"]:
             if not data.get(key):
-                del data[key]  
+                del data[key]
 
         updated_time = data["signup updated time"]
         est_time_str = cls.convert_to_est(updated_time)
 
         core_fields: Dict[str, str] = {
             "shift id": shift_id,
-            "Timestamp (EST)": est_time_str
+            "Timestamp (EST)": est_time_str,
         }
 
         custom_fields: Dict[str, Any] = {}
@@ -241,13 +241,9 @@ class ATRecord:
             if target_name:
                 custom_fields[name] = value
 
-        return cls._from_fields(
-            key="shift id",
-            core=core_fields,
-            custom=custom_fields
-        )
-    
-    @classmethod 
+        return cls._from_fields(key="shift id", core=core_fields, custom=custom_fields)
+
+    @classmethod
     def from_mobilize_person(cls, data: Dict[str, str]) -> ATRecord:
         person_core_fields = {
             "Email": data["email"],
@@ -257,11 +253,7 @@ class ATRecord:
             "Timestamp (EST)": cls.convert_to_est(data["signup updated time"]),
         }
 
-        return cls._from_fields(
-            key="Email",
-            core=person_core_fields, 
-            custom={}
-        )
+        return cls._from_fields(key="Email", core=person_core_fields, custom={})
 
     @classmethod
     def convert_to_est(cls, utc_str: str) -> str:

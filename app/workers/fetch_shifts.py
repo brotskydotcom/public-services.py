@@ -33,16 +33,19 @@ from ..utils import (
     make_record_updates,
 )
 
-def fetch_mobilize_shifts(csv_name: str) -> Tuple[Dict[str, ATRecord], Dict[str, ATRecord]]:
+
+def fetch_mobilize_shifts(
+    csv_name: str,
+) -> Tuple[Dict[str, ATRecord], Dict[str, ATRecord]]:
     """
     Get application records from a Mobilize CSV.
     Returns them in a map from email-timeslot_id (key) to record.
     """
     print(f"Creating records for shifts and attendees...")
     shifts: Dict[str, ATRecord] = {}
-    attendees: Dict[str, ATRecord] = {} 
+    attendees: Dict[str, ATRecord] = {}
     with open(csv_name) as csvfile:
-        csv_reader = csv.reader(csvfile, delimiter=',', quotechar='"')
+        csv_reader = csv.reader(csvfile, delimiter=",", quotechar='"')
         headings = next(csv_reader)
         for row in csv_reader:
             row_data: Dict[str, str] = {}
@@ -57,10 +60,11 @@ def fetch_mobilize_shifts(csv_name: str) -> Tuple[Dict[str, ATRecord], Dict[str,
             MC.set("person")
             attendee_record = ATRecord.from_mobilize_person(row_data)
             attendees[attendee_record.key] = attendee_record
-                        
+
     print(f"Created {len(shifts)} records for shifts.")
     print(f"Created {len(attendees)} records for attendees.")
     return shifts, attendees
+
 
 def fetch_airtable_shift_records() -> Tuple[Dict[str, ATRecord], Dict[str, ATRecord]]:
     print(f"Fetching Airtable records...")
@@ -73,10 +77,11 @@ def fetch_airtable_shift_records() -> Tuple[Dict[str, ATRecord], Dict[str, ATRec
     print(f"Fetched {len(airtable_people)} existing Airtable records for attendees.")
     return airtable_shifts, airtable_people
 
+
 def transfer_shifts(csv_name: str):
     print(f"Transferring all shifts")
-    airtable_shifts, airtable_people = fetch_airtable_shift_records()  
-    shifts, attendees =  fetch_mobilize_shifts(csv_name)
+    airtable_shifts, airtable_people = fetch_airtable_shift_records()
+    shifts, attendees = fetch_mobilize_shifts(csv_name)
 
     MC.set("person")
     people_comparison_map = compare_record_maps(airtable_people, attendees)
