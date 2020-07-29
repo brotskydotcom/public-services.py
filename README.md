@@ -1,6 +1,7 @@
 # public-services.py
 
-
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+![Check style](https://github.com/brotskydotcom/public-services.py/workflow/Lint/badge.svg)
 
 This is a set of publicly-available services hosted by [Dan Brotsky Consulting](https://brotsky.com).  The exact functionality varies over time.
 
