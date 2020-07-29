@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Any, List, Optional, ClassVar
+from typing import Dict, Any, List, Optional, ClassVar, Tuple
 
 from airtable import Airtable
 from dateutil.parser import parse
@@ -212,6 +212,48 @@ class ATRecord:
             },
             custom={},
         )
+
+    @classmethod
+    def from_mobilize(cls, data: Dict[str, str]) -> ATRecord:
+        if event_id := data.get("event id"):
+            if timeslot_id := data.get("timeslot id"):
+                shift_id = f"{data['email']}-{event_id}-{timeslot_id}"
+            else:
+                shift_id = f"{data['email']}-{event_id}-{data['signup created time']}"
+        else:
+            shift_id = f"{data['email']}-{data['signup created time']}"
+
+        for key in ["attended", "rating", "Spanish", "status"]:
+            if not data.get(key):
+                del data[key]
+
+        updated_time = data["signup updated time"]
+        est_time_str = cls.convert_to_est(updated_time)
+
+        core_fields: Dict[str, str] = {
+            "shift id": shift_id,
+            "Timestamp (EST)": est_time_str,
+        }
+
+        custom_fields: Dict[str, Any] = {}
+        for name, value in data.items():
+            target_name = MC.target_custom_field(name)
+            if target_name:
+                custom_fields[name] = value
+
+        return cls._from_fields(key="shift id", core=core_fields, custom=custom_fields)
+
+    @classmethod
+    def from_mobilize_person(cls, data: Dict[str, str]) -> ATRecord:
+        person_core_fields = {
+            "Email": data["email"],
+            "First name": data["first name"],
+            "Last name": data["last name"],
+            "Full name": data["first name"] + " " + data["last name"],
+            "Timestamp (EST)": cls.convert_to_est(data["signup updated time"]),
+        }
+
+        return cls._from_fields(key="Email", core=person_core_fields, custom={})
 
     @classmethod
     def convert_to_est(cls, utc_str: str) -> str:
