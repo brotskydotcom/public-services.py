@@ -34,7 +34,7 @@ jinja2==2.11.2
 jmespath==0.10.0
 markupsafe==1.1.1
 multidict==4.7.6
-orjson==3.2.2
+orjson==3.3.0
 promise==2.3
 pydantic==1.6.1
 python-dateutil==2.8.1
@@ -48,9 +48,9 @@ starlette==0.13.4
 typing-extensions==3.7.4.2
 ujson==3.0.0
 uritemplate==3.0.1
-urllib3==1.25.9
+urllib3==1.25.10
 uvicorn==0.10.9
 uvloop==0.14.0; sys_platform != "win32" and sys_platform != "cygwin" and platform_python_implementation != "pypy"
 websockets==8.1
 wrapt==1.12.1
-yarl==1.4.2
+yarl==1.5.0
