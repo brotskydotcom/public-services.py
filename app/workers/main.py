@@ -40,12 +40,32 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
+import asyncio
+from asyncio import create_task
 
-from .webhook_transfer import transfer_all_webhook_items
-from ..db import redis
+from .webhook_transfer import process_all_item_lists
+from ..db import ItemListStore
+from ..utils import MapContext, log_error
 
 
 async def app():
-    await redis.db.connect()
-    await transfer_all_webhook_items()
-    await redis.db.close()
+    MapContext.initialize()
+    await ItemListStore.initialize()
+    try:
+        print(f"Worker start...")
+        while True:
+            task = create_task(process_all_item_lists(), name="Process item lists")
+            key = await ItemListStore.select_new_item()
+            if key is None:
+                task.cancel()
+                break
+            print(f"New incoming item list: {key}")
+        print(f"Worker stopped.")
+    except asyncio.CancelledError:
+        print(f"Worker cancelled.")
+    except KeyboardInterrupt:
+        pass
+    except:
+        log_error(f"Worker failure")
+    finally:
+        await ItemListStore.terminate()

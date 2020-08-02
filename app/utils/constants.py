@@ -235,7 +235,3 @@ class MapContext:
                 cls.load_config_locally(form_path)
             else:
                 cls.load_config_from_aws()
-
-
-# initialize on load
-MapContext.initialize()

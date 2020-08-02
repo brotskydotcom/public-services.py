@@ -19,12 +19,13 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
+import asyncio
 import pickle
 from typing import Optional
 
 import aiohttp
 
-from ..db import redis
+from ..db import redis, ItemListStore as Store
 from ..utils import (
     Environment,
     env,
@@ -36,15 +37,17 @@ from ..utils import (
 )
 
 
-async def process_items(list_key: str) -> Optional[str]:
+async def process_item_list(key: str) -> Optional[str]:
     """
-    Process the items in the list, queuing problems for later retry.
+    Process the items in the list with the given `key`.
+    If there are temporary failures with some of the items on the list,
+    we make a list of the items that failed, and return it.
     """
-    print(f"Processing webhook items on '{list_key}'...")
+    print(f"Processing webhook items on list '{key}'...")
     success_count, fail_count = 0, 0
-    environ, guid, retry_count = list_key.split(":")
-    retry_key = ":".join((environ, guid, str(int(retry_count) + 1)))
-    while item_data := await redis.db.lpop(list_key):
+    environ, ident, rc = key.split(":")
+    retry_key = f"{environ}:{ident}:{int(rc) + 1}"
+    while item_data := await redis.db.lpop(key):
         form_name, body = pickle.loads(item_data)
         item = ANHash.from_parts(form_name, body)
         try:
@@ -61,8 +64,9 @@ async def process_items(list_key: str) -> Optional[str]:
             if env() is Environment.DEV:
                 logging_key = redis.get_key("Successfully processed")
                 await redis.db.rpush(logging_key, item_data)
-        except ValueError:
-            log_error(f"Invalid data, ignoring item: {body}")
+        except ValueError as e:
+            msg = e.args[0] if e.args else "Invalid data"
+            log_error(f"{msg}, ignoring item: {body}")
             success_count += 1
         except:
             log_error(f"Temporary error, will retry later")
@@ -72,13 +76,13 @@ async def process_items(list_key: str) -> Optional[str]:
                 logging_key = redis.get_key("Failed to process")
                 await redis.db.rpush(logging_key, item_data)
     if fail_count > 0:
-        print(f"Failed to process {fail_count} item(s).")
-        if int(retry_count) >= 4:
-            print(f"Have already tried 5 times, not trying again.")
+        print(f"Failed to process {fail_count} item(s) on list '{key}'.")
+        if int(rc) >= 5:
+            print(f"Have already retried 5 times, giving up on failed items.")
         else:
-            print(f"Will save failed item(s) for later retry.")
+            print(f"Saving failed item(s) for retry on list '{retry_key}'.")
             return retry_key
-    print(f"List '{list_key}' done: processed {success_count} item(s) successfully.")
+    print(f"Successfully processed {success_count} item(s) on list '{key}'.")
     return None
 
 
@@ -111,17 +115,21 @@ async def transfer_person(item: ANHash) -> str:
     return an_record.key
 
 
-async def transfer_all_webhook_items():
-    master_list: str = redis.get_key("Submitted Items")
+async def process_all_item_lists():
+    print(f"Processing all item lists...")
+    count, retry_count = 0, 0
     try:
-        count = await redis.db.llen(master_list)
-        print(f"Processing {count} webhook item list(s)...")
-        for i in range(count):
-            try_list = await redis.db.lpop(master_list, encoding="ascii")
-            retry_list = await process_items(try_list)
-            if retry_list:
-                await redis.db.rpush(master_list, try_list)
-        new_count = await redis.db.llen(master_list)
+        while list_key := await Store.select_for_processing():
+            count += 1
+            fail_key = await process_item_list(list_key)
+            await Store.remove_item_list(list_key)
+            if fail_key:
+                await Store.add_retry_list(fail_key)
     except redis.Error:
-        log_error(f"Error fetching or saving webhook item list")
-    print(f"Processed {count} webhook item list(s); got {new_count} retry list(s).")
+        log_error(f"Database failure")
+    except asyncio.CancelledError:
+        pass
+    except:
+        log_error(f"Unexpected failure")
+    finally:
+        print(f"Processed {count} item list(s); got {retry_count} retry list(s).")

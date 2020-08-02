@@ -45,6 +45,7 @@ import os.path
 import sys
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 Environment = Enum("Environment", "DEV STAGE PROD")
 
@@ -72,11 +73,59 @@ def log_error(context: str) -> str:
     return message
 
 
-def seq_id() -> str:
+class Timestamp:
     """
-    Return a date-based, monotonically-increasing ID that's
-    reasonably likely to be unique for this computer and
-    that doesn't have any colons in it.
+    A Timestamp is a unique ID string based on a datetime (default now)
+    that can be queried for its age.  It's guaranteed not to have
+    colons in it so that it can be concatenated via colon.
     """
-    now = datetime.now().strftime("%y%m%d.%H%M%S.%f")
-    return f"{now}.{os.getpid()}"
+
+    def __init__(self, time: Optional[datetime] = None):
+        """
+        Return a date-based, monotonically-increasing ID that's
+        reasonably likely to be unique for this computer and
+        that doesn't have any colons in it.
+        """
+        if not isinstance(time, datetime):
+            self.val = datetime.now()
+        else:
+            self.val = time
+        id_base = self.val.strftime("%Y%m%d.%H%M%S.%f")
+        self.id = f"{id_base}.{os.getpid()}"
+
+    def __str__(self):
+        return self.id
+
+    def __repr__(self):
+        def fullname():
+            """code from https://stackoverflow.com/a/13653312/558006"""
+            module = self.__class__.__module__
+            if module is None or module == str.__class__.__module__:
+                return self.__class__.__name__
+            return module + "." + self.__class__.__name__
+
+        return f"{fullname()}({repr(self.val)})"
+
+    def age_in_minutes(self) -> float:
+        age = datetime.now() - self.val
+        return age.total_seconds() / 60.0
+
+    @classmethod
+    def from_string(cls, val: str):
+        parts = val.split(".")
+        if len(parts) != 4:
+            raise ValueError("Not a valid timestamp: {val}")
+        date, time, msecs, _ = parts
+        if len(date) != 8 or len(time) != 6 or len(msecs) != 6:
+            raise ValueError("Not a valid timestamp: {val}")
+        time = datetime(
+            int(date[0:4]),
+            int(date[4:6]),
+            int(date[6:8]),
+            int(time[0:2]),
+            int(time[2:4]),
+            int(time[4:6]),
+            int(msecs),
+        )
+        self = cls(time)
+        return self

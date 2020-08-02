@@ -21,5 +21,4 @@
 #  SOFTWARE.
 
 from .main import app
-from .webhook_transfer import transfer_all_webhook_items
-from .fetch_people import transfer_people
+from .webhook_transfer import process_all_item_lists
