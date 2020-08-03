@@ -85,7 +85,10 @@ def transfer_shifts(csv_name: str):
 
     MC.set("person")
     people_comparison_map = compare_record_maps(airtable_people, attendees)
+<<<<<<< HEAD
     people_comparison_map["an_newer"] = {}
+=======
+>>>>>>> master
     make_record_updates(people_comparison_map)
 
     MC.set("shift")
