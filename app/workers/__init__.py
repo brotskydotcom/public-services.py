@@ -20,5 +20,5 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 
-from .main import app
+from .main import app, EmbeddedWorker
 from .webhook_transfer import process_all_item_lists

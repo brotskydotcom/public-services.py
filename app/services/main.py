@@ -25,6 +25,7 @@ from fastapi import FastAPI
 from .an import an
 from ..db import ItemListStore
 from ..utils import env, Environment, MapContext
+from ..workers import EmbeddedWorker
 
 if env() in (Environment.DEV, Environment.STAGE):
     app = FastAPI()
@@ -39,8 +40,10 @@ app.include_router(an, prefix="/action_network", tags=["action_network"])
 async def startup():
     MapContext.initialize()
     await ItemListStore.initialize()
+    EmbeddedWorker.start()
 
 
 @app.on_event("shutdown")
 async def shutdown():
+    EmbeddedWorker.stop()
     await ItemListStore.terminate()

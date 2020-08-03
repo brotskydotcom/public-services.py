@@ -66,10 +66,10 @@ def database_error(context: str) -> JSONResponse:
         }
     },
     summary="Receiver for new webhook messages. "
-    "Specify query parameter 'spawn_worker' as 'true' "
-    "to spawn a worker task to process the webhook.",
+    "Specify query parameter 'force_transfer' as 'true' "
+    "to create a explicit task to transfer the webhook.",
 )
-async def receive_notification(body: List[Dict], spawn_worker: bool = False):
+async def receive_notification(body: List[Dict], force_transfer: bool = False):
     """
     Receive a notification from an Action Network web hook.
 
@@ -86,8 +86,8 @@ async def receive_notification(body: List[Dict], spawn_worker: bool = False):
         except redis.Error:
             return database_error(f"while saving received items")
     print(f"Accepted {len(items)} item(s) from webhook.")
-    if spawn_worker and env() != Environment.PROD:
-        print(f"Running worker task to transfer received item(s).")
+    if force_transfer:
+        print(f"Running transfer task over received item(s).")
         asyncio.create_task(process_all_item_lists())
     return WebHookResponse(accepted=len(items))
 

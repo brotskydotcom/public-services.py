@@ -21,7 +21,7 @@
 #  SOFTWARE.
 import asyncio
 import pickle
-from typing import Optional
+from typing import Optional, Tuple
 
 import aiohttp
 
@@ -115,7 +115,7 @@ async def transfer_person(item: ANHash) -> str:
     return an_record.key
 
 
-async def process_all_item_lists():
+async def process_all_item_lists() -> Tuple[int, int]:
     print(f"Processing ready item lists...")
     count, retry_count = 0, 0
     try:
@@ -133,3 +133,4 @@ async def process_all_item_lists():
         log_error(f"Unexpected failure")
     finally:
         print(f"Processed {count} item list(s); got {retry_count} retry list(s).")
+    return count, retry_count

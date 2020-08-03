@@ -135,7 +135,7 @@ def test_webhook_bad_person_noprocess_retrieve_process_retrieve(server, database
     test_case = test_cases["incorrect person id"]
     endpoint_p = "/action_network/notification"
     _ = requests.post(
-        host + endpoint_p + "?spawn_worker=true",
+        host + endpoint_p + "?force_transfer=true",
         json=[test_case],
         headers={"Accept": "application/json"},
     )
@@ -153,7 +153,7 @@ def test_webhook_bad_person_noprocess_retrieve_process_retrieve(server, database
     for k, v in body.items():
         assert sub_data[k] == v
     _ = requests.post(
-        host + endpoint_p + "?spawn_worker=false",
+        host + endpoint_p + "?force_transfer=false",
         json=[test_case],
         headers={"Accept": "application/json"},
     )

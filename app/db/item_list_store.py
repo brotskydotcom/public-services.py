@@ -24,9 +24,10 @@ from random import uniform
 from time import time as now
 from typing import ClassVar, Optional, Any
 
-from aioredis import Redis, MultiExecError
+from aioredis import Redis, RedisError
 
 from .redis_db import redis
+from ..utils import log_error
 
 
 class ItemListStore:
@@ -138,17 +139,25 @@ class ItemListStore:
     async def select_from_channel(cls) -> Optional[str]:
         """
         Wait until there's an item sent to the channel, then return it.
+
+        This takes advantage of the fact that the underlying connection
+        pool has free connections and will automatically use one of them
+        for the subscription.  That way we can be a subscriber while
+        other tasks are also being publishers.
         """
         try:
             channels = await cls.db.subscribe(cls.item_list_channel_name)
             key = await channels[0].get(encoding="utf-8")
             await cls.db.unsubscribe(cls.item_list_channel_name)
             return key
+        except RedisError:
+            log_error("Pub/Sub failed")
+            return None
         except asyncio.CancelledError:
             return None
 
     @classmethod
-    async def select_for_processing(cls, timeout: float = 0) -> Optional[str]:
+    async def select_for_processing(cls) -> Optional[str]:
         """
         Find the first item list that's ready for processing,
         mark it as in-process, and return it.  The select
@@ -165,16 +174,12 @@ class ItemListStore:
             Returns whether setting the mark was successful.
             """
             new_score = now() + cls.IN_PROCESS
-            pipe: Redis = cls.db.multi_exec()
-            try:
-                pipe.zadd(cls.set_key, score=new_score, member=key)
-                await pipe.execute()
-                return True
-            except MultiExecError as e:
-                # see https://github.com/aio-libs/aioredis/issues/558
-                # TODO: try return_exceptions=True in the execute call instead
-                await asyncio.gather(*pipe._results, return_exceptions=True)
-                return False
+            pipe = cls.db.multi_exec()
+            pipe.zadd(cls.set_key, score=new_score, member=key)
+            # return the exceptions rather than raising them because of
+            # this issue: https://github.com/aio-libs/aioredis/issues/558
+            values = await pipe.execute(return_exceptions=True)
+            return values[0] == 0
 
         # because we are using optimistic locking, keep trying if we
         # fail due to interference from other workers.

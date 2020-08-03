@@ -56,8 +56,12 @@ class RedisDatabase:
         self.db = await create_redis_pool(self.url, maxsize=max_connections)
 
     async def close_async(self):
+        if self.db is None:
+            return
+
         self.db.close()
         await self.db.wait_closed()
+        self.db = None
 
     def connect_sync(self):
         if self.db is not None:
@@ -70,7 +74,11 @@ class RedisDatabase:
         self.db = from_url(self.url, max_connections=max_connections)
 
     def close_sync(self):
+        if self.db is None:
+            return
+
         self.db.close()
+        self.db = None
 
     def get_key(self, name: str) -> str:
         """

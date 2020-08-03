@@ -41,18 +41,24 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 import asyncio
+import os
 from random import uniform
+from typing import Optional
 
 from .webhook_transfer import process_all_item_lists
 from ..db import ItemListStore
-from ..utils import MapContext, log_error
+from ..utils import MapContext, log_error, env, Environment
 
 
-async def app():
-    MapContext.initialize()
-    await ItemListStore.initialize()
+async def worker():
+    """
+    The main worker loop.  This is meant to be run as a task,
+    either in the server process or a separate worker process.
+
+    You have to do MapContext and ItemListStore initialization
+    and teardown around your call to this function.
+    """
     try:
-        print(f"Worker started...")
         while True:
             await process_all_item_lists()
             print(f"Waiting for new items to arrive...")
@@ -65,9 +71,58 @@ async def app():
         print(f"Worker stopped.")
     except asyncio.CancelledError:
         print(f"Worker cancelled.")
+    except:
+        log_error(f"Worker failure")
+        raise
+
+
+async def app():
+    """
+    The main worker app, run as the only task in a process.
+    """
+    MapContext.initialize()
+    await ItemListStore.initialize()
+    try:
+        print(f"Worker started...")
+        await worker()
     except KeyboardInterrupt:
         print(f"Worker shutdown.")
     except:
-        log_error(f"Worker failure")
+        print(f"Worker failed.")
     finally:
         await ItemListStore.terminate()
+
+
+class EmbeddedWorker:
+    """
+    A way of using a worker as a task, rather than as
+    a top-level process, so it can be embedded in
+    a web server process.
+    """
+
+    worker_task: Optional[asyncio.Task] = None
+
+    @staticmethod
+    async def app():
+        """
+        The worker run as an embedded task.  We assume all the
+        initialization and teardown is done by our embedding process
+        and happens before/after ours does.
+        """
+        try:
+            print(f"Embedded worker started...")
+            await worker()
+        except:
+            print(f"Embedded worker failed.")
+
+    @classmethod
+    def start(cls):
+        if env() != Environment.PROD:
+            if os.getenv("EMBEDDED_WORKER") is not None:
+                cls.worker_task = asyncio.create_task(cls.app())
+
+    @classmethod
+    def stop(cls):
+        if cls.worker_task:
+            cls.worker_task.cancel()
+        cls.worker_task = None
