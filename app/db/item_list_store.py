@@ -24,7 +24,7 @@ from random import uniform
 from time import time as now
 from typing import ClassVar, Optional, Any
 
-from aioredis import Redis
+from aioredis import Redis, MultiExecError
 
 from .redis_db import redis
 
@@ -75,7 +75,11 @@ class ItemListStore:
     The sorted set of items with their next-ready times.
     """
 
-    new_item_channel_name: ClassVar[str] = redis.get_key("Item Arrival")
+    item_list_channel_name: ClassVar[str] = redis.get_key("Item List Ready")
+    """
+    Redis pub/sub channel where items that are ready to process
+    are published so workers can pick them up.
+    """
 
     db: Optional[Redis]
 
@@ -92,36 +96,53 @@ class ItemListStore:
         """
         Make sure redis is closed.
         """
-        cls.db = None
         await redis.close_async()
+        cls.db = None
 
     @classmethod
     async def add_new_list(cls, key: str) -> Any:
+        """
+        Add a newly posted item list to the set with no delay.
+        Notify the item list channel that it's ready.
+        """
         result = await cls.db.zadd(cls.set_key, score=now(), member=key)
-        cls.db.publish(cls.new_item_channel_name, key)
+        cls.db.publish(cls.item_list_channel_name, key)
         return result
 
     @classmethod
     async def add_retry_list(cls, key: str) -> Any:
+        """
+        Add a retry list to the set with an appropriate delay.
+        Also arrange to notify the item list channel when it's ready.
+        """
+
+        async def notify_later():
+            await asyncio.sleep(cls.RETRY_DELAY)
+            cls.db.publish(cls.item_list_channel_name, key)
+
         result = await cls.db.zadd(
             cls.set_key, score=now() + cls.RETRY_DELAY, member=key
         )
+        asyncio.create_task(notify_later())
         return result
 
     @classmethod
     async def remove_item_list(cls, key: str) -> Any:
+        """
+        Remove a processed item list from the set.
+        """
         result = await cls.db.zrem(cls.set_key, key)
         return result
 
     @classmethod
-    async def select_new_item(cls) -> Optional[str]:
+    async def select_from_channel(cls) -> Optional[str]:
         """
-        Wait until there's a new item, then return it.
+        Wait until there's an item sent to the channel, then return it.
         """
         try:
-            channels = await cls.db.subscribe(cls.new_item_channel_name)
+            channels = await cls.db.subscribe(cls.item_list_channel_name)
             key = await channels[0].get(encoding="utf-8")
-            await cls.db.unsubscribe(cls.new_item_channel_name)
+            await cls.db.unsubscribe(cls.item_list_channel_name)
             return key
         except asyncio.CancelledError:
             return None
@@ -133,23 +154,27 @@ class ItemListStore:
         mark it as in-process, and return it.  The select
         prioritizes any older item lists that were left from a prior run
         over item lists that haven't been processed before.
-        If there is an item list that's not yet ready for processing,
-        we will wait an optional `timeout` seconds for it to become ready
-        unless (default timeout of 0, which means indefinitely).
 
         Returns:
-            The item list key, if we selected one, None otherwise.
+            The item list key, if one is ready for processing, None otherwise.
         """
 
-        async def mark_for_processing(key: str) -> str:
+        async def mark_for_processing(key: str) -> bool:
             """
-            Mark an item list key as being in process.  Returns the key.
+            Mark an item list key as being in process.
+            Returns whether setting the mark was successful.
             """
             new_score = now() + cls.IN_PROCESS
             pipe: Redis = cls.db.multi_exec()
-            pipe.zadd(cls.set_key, score=new_score, member=key)
-            await pipe.execute()
-            return key
+            try:
+                pipe.zadd(cls.set_key, score=new_score, member=key)
+                await pipe.execute()
+                return True
+            except MultiExecError as e:
+                # see https://github.com/aio-libs/aioredis/issues/558
+                # TODO: try return_exceptions=True in the execute call instead
+                await asyncio.gather(*pipe._results, return_exceptions=True)
+                return False
 
         # because we are using optimistic locking, keep trying if we
         # fail due to interference from other workers.
@@ -158,8 +183,8 @@ class ItemListStore:
                 start = now()
                 # optimistically lock the item set
                 await cls.db.watch(cls.set_key)
-                # first look for abandoned items
-                items = await cls.db.zrangebyscore(
+                # first look for abandoned item lists from a prior run
+                item_lists = await cls.db.zrangebyscore(
                     cls.set_key,
                     min=start + (cls.RETRY_DELAY + cls.CLOCK_DRIFT),
                     max=start + cls.IN_PROCESS - (cls.TIMEOUT + cls.CLOCK_DRIFT),
@@ -167,35 +192,28 @@ class ItemListStore:
                     count=1,
                     encoding="ascii",
                 )
-                if items:
-                    return await mark_for_processing(items[0])
-                # next look for the first item that's ready now
-                items = await cls.db.zrangebyscore(
-                    cls.set_key,
-                    max=start + cls.CLOCK_DRIFT,
-                    offset=0,
-                    count=1,
-                    encoding="ascii",
-                )
-                if items:
-                    return await mark_for_processing(items[0])
-                # next look for the first delayed item and maybe wait for it
-                items_and_scores = await cls.db.zrange(
-                    cls.set_key, start=0, stop=0, withscores=True, encoding="ascii"
-                )
-                if items_and_scores:
-                    item, when = items_and_scores[0]
-                    delay = when - start
-                    if 0 < timeout < delay:
-                        # we can't wait for this item to be ready
-                        return None
-                    # wait for this item, then try again
-                    # we add a random delay to avoid conflict with other processors
-                    await asyncio.sleep(delay + uniform(0.1, cls.CLOCK_DRIFT))
-                    continue
-                # give up
-                return None
-            except redis.WatchError:
-                continue
+                if not item_lists:
+                    # next look for the first item list that's ready now
+                    item_lists = await cls.db.zrangebyscore(
+                        cls.set_key,
+                        max=start + cls.CLOCK_DRIFT,
+                        offset=0,
+                        count=1,
+                        encoding="ascii",
+                    )
+                if not item_lists:
+                    # no item lists ready for processing, give up
+                    return None
+                # found one to process
+                item_list = item_lists[0]
+                if await mark_for_processing(item_list):
+                    return item_list
+                # if marking fails, it's due to a conflict failure,
+                # so loop and try again after taking a beat
+                await asyncio.sleep(uniform(0.1, 2.0))
             finally:
-                await cls.db.unwatch()
+                # we may have been interrupted and already
+                # closed down the connection, so make sure
+                # it still exists before we unwatch
+                if cls.db:
+                    await cls.db.unwatch()

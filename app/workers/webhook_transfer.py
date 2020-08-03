@@ -116,15 +116,15 @@ async def transfer_person(item: ANHash) -> str:
 
 
 async def process_all_item_lists():
-    print(f"Processing all item lists...")
+    print(f"Processing ready item lists...")
     count, retry_count = 0, 0
     try:
         while list_key := await Store.select_for_processing():
             count += 1
             fail_key = await process_item_list(list_key)
-            await Store.remove_item_list(list_key)
             if fail_key:
                 await Store.add_retry_list(fail_key)
+            await Store.remove_item_list(list_key)
     except redis.Error:
         log_error(f"Database failure")
     except asyncio.CancelledError:

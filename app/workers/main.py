@@ -41,7 +41,7 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 import asyncio
-from asyncio import create_task
+from random import uniform
 
 from .webhook_transfer import process_all_item_lists
 from ..db import ItemListStore
@@ -52,19 +52,21 @@ async def app():
     MapContext.initialize()
     await ItemListStore.initialize()
     try:
-        print(f"Worker start...")
+        print(f"Worker started...")
         while True:
-            task = create_task(process_all_item_lists(), name="Process item lists")
-            key = await ItemListStore.select_new_item()
-            if key is None:
-                task.cancel()
+            await process_all_item_lists()
+            print(f"Waiting for new items to arrive...")
+            key = await ItemListStore.select_from_channel()
+            if not key:
                 break
             print(f"New incoming item list: {key}")
+            # minimize conflict between workers with random stagger
+            await asyncio.sleep(uniform(0.1, 2.0))
         print(f"Worker stopped.")
     except asyncio.CancelledError:
         print(f"Worker cancelled.")
     except KeyboardInterrupt:
-        pass
+        print(f"Worker shutdown.")
     except:
         log_error(f"Worker failure")
     finally:

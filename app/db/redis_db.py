@@ -44,16 +44,14 @@ class RedisDatabase:
         self.db = None
         self.keys = {}
         self.Error = Exception
-        self.WatchError = Exception
 
     async def connect_async(self):
         if self.db is not None:
             return
 
-        from aioredis import RedisError, WatchVariableError, create_redis_pool
+        from aioredis import RedisError, create_redis_pool
 
         self.Error = RedisError
-        self.WatchError = WatchVariableError
         max_connections = 5 if env() is Environment.PROD else 2
         self.db = await create_redis_pool(self.url, maxsize=max_connections)
 
@@ -65,10 +63,9 @@ class RedisDatabase:
         if self.db is not None:
             return
 
-        from redis import RedisError, WatchError, from_url
+        from redis import RedisError, from_url
 
         self.Error = RedisError
-        self.WatchError = WatchError
         max_connections = 5 if env() is Environment.PROD else 2
         self.db = from_url(self.url, max_connections=max_connections)
 
