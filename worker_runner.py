@@ -21,11 +21,10 @@
 #  SOFTWARE.
 import asyncio
 
-from app.utils import env, Environment
 from app.workers.main import app
 
 if __name__ == "__main__":
     try:
-        asyncio.run(app(), debug=env() != Environment.PROD)
+        asyncio.run(app())
     except KeyboardInterrupt:
         pass

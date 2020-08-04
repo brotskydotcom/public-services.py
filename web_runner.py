@@ -44,7 +44,6 @@
 import uvicorn
 
 from app.services.main import app
-from app.utils import env, Environment
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="localhost", port=8080, debug=env() != Environment.PROD)
+    uvicorn.run(app, host="localhost", port=8080)
