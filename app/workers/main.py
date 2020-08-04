@@ -117,9 +117,8 @@ class EmbeddedWorker:
 
     @classmethod
     def start(cls):
-        if env() != Environment.PROD:
-            if os.getenv("EMBEDDED_WORKER") is not None:
-                cls.worker_task = asyncio.create_task(cls.app())
+        if os.getenv("EMBEDDED_WORKER") is not None:
+            cls.worker_task = asyncio.create_task(cls.app())
 
     @classmethod
     def stop(cls):
