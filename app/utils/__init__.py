@@ -19,7 +19,7 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-from .general import log_error, Environment, lookup_env, env, seq_id
+from .general import log_error, Environment, lookup_env, env, Timestamp
 from .constants import MapContext
 from .formats import (
     ANHash,

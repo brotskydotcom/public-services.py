@@ -20,17 +20,13 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 import json
-import os
 import time
-from multiprocessing import Process, set_start_method
 
 import pytest
 import requests
-import uvicorn
 
-from app.utils import env, Environment
-from app.services.main import app
 from app.db import redis_db
+from app.utils import env, Environment
 
 
 @pytest.fixture(scope="session")
@@ -139,7 +135,7 @@ def test_webhook_bad_person_noprocess_retrieve_process_retrieve(server, database
     test_case = test_cases["incorrect person id"]
     endpoint_p = "/action_network/notification"
     _ = requests.post(
-        host + endpoint_p + "?delay_processing=true",
+        host + endpoint_p + "?force_transfer=true",
         json=[test_case],
         headers={"Accept": "application/json"},
     )
@@ -157,7 +153,7 @@ def test_webhook_bad_person_noprocess_retrieve_process_retrieve(server, database
     for k, v in body.items():
         assert sub_data[k] == v
     _ = requests.post(
-        host + endpoint_p + "?delay_processing=false",
+        host + endpoint_p + "?force_transfer=false",
         json=[test_case],
         headers={"Accept": "application/json"},
     )

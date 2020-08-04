@@ -21,9 +21,11 @@
 #  SOFTWARE.
 import sys
 
+from app.utils import MapContext
 from app.workers.fetch_people import transfer_people
 
 if __name__ == "__main__":
+    MapContext.initialize()
     if len(sys.argv) > 1:
         transfer_people(sys.argv[1:])
     else:

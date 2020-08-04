@@ -40,12 +40,89 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
+import asyncio
+import os
+from random import uniform
+from typing import Optional
 
-from .webhook_transfer import transfer_all_webhook_items
-from ..db import redis
+from .webhook_transfer import process_all_item_lists
+from ..db import ItemListStore
+from ..utils import MapContext, log_error, env, Environment
+
+
+async def worker():
+    """
+    The main worker loop.  This is meant to be run as a task,
+    either in the server process or a separate worker process.
+
+    You have to do MapContext and ItemListStore initialization
+    and teardown around your call to this function.
+    """
+    try:
+        while True:
+            await process_all_item_lists()
+            print(f"Waiting for new items to arrive...")
+            key = await ItemListStore.select_from_channel()
+            if not key:
+                break
+            print(f"New incoming item list: {key}")
+            # minimize conflict between workers with random stagger
+            await asyncio.sleep(uniform(0.1, 2.0))
+        print(f"Worker stopped.")
+    except asyncio.CancelledError:
+        print(f"Worker cancelled.")
+    except:
+        log_error(f"Worker failure")
+        raise
 
 
 async def app():
-    await redis.db.connect()
-    await transfer_all_webhook_items()
-    await redis.db.close()
+    """
+    The main worker app, run as the only task in a process.
+    """
+    MapContext.initialize()
+    await ItemListStore.initialize()
+    try:
+        print(f"Worker started...")
+        await worker()
+    except KeyboardInterrupt:
+        print(f"Worker shutdown.")
+    except:
+        print(f"Worker failed.")
+    finally:
+        await ItemListStore.terminate()
+
+
+class EmbeddedWorker:
+    """
+    A way of using a worker as a task, rather than as
+    a top-level process, so it can be embedded in
+    a web server process.
+    """
+
+    worker_task: Optional[asyncio.Task] = None
+
+    @staticmethod
+    async def app():
+        """
+        The worker run as an embedded task.  We assume all the
+        initialization and teardown is done by our embedding process
+        and happens before/after ours does.
+        """
+        try:
+            print(f"Embedded worker started...")
+            await worker()
+        except:
+            print(f"Embedded worker failed.")
+
+    @classmethod
+    def start(cls):
+        if env() != Environment.PROD:
+            if os.getenv("EMBEDDED_WORKER") is not None:
+                cls.worker_task = asyncio.create_task(cls.app())
+
+    @classmethod
+    def stop(cls):
+        if cls.worker_task:
+            cls.worker_task.cancel()
+        cls.worker_task = None

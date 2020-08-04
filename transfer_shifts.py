@@ -21,9 +21,11 @@
 #  SOFTWARE.
 import sys
 
+from app.utils import MapContext
 from app.workers.fetch_shifts import transfer_shifts
 
 if __name__ == "__main__":
+    MapContext.initialize()
     if len(sys.argv) == 2:
         transfer_shifts(sys.argv[1])
     else:

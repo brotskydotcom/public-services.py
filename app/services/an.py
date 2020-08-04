@@ -28,9 +28,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
-from ..db import redis
-from ..utils import ANHash, log_error, env, seq_id, Environment
-from ..workers import transfer_all_webhook_items
+from ..db import redis, ItemListStore as Store
+from ..utils import ANHash, log_error, env, Timestamp, Environment
+from ..workers import process_all_item_lists
 
 an = APIRouter()
 
@@ -65,31 +65,30 @@ def database_error(context: str) -> JSONResponse:
             "description": "Database error during processing",
         }
     },
-    summary="Receiver for new webhook messages. Valid hooks are "
-    "processed immediately unless query parameter "
-    "'delay_processing' is specified as 'true'",
+    summary="Receiver for new webhook messages. "
+    "Specify query parameter 'force_transfer' as 'true' "
+    "to create a explicit task to transfer the webhook.",
 )
-async def receive_notification(body: List[Dict], delay_processing: bool = False):
+async def receive_notification(body: List[Dict], force_transfer: bool = False):
     """
     Receive a notification from an Action Network web hook.
 
     See https://actionnetwork.org/docs/webhooks for details.
     """
     print(f"Received webhook with {len(body)} hash(es).")
-    ani_key: str = redis.get_key("Submitted Items")
     items = ANHash.find_items(data=body)
     if items:
         values = [pickle.dumps((item.form_name, item.body)) for item in items]
-        list_key = ":".join((env().name, seq_id(), "0"))
+        list_key = f"{env().name}:{Timestamp()}:0"
         try:
             await redis.db.rpush(list_key, *values)
-            await redis.db.rpush(ani_key, list_key)
+            await Store.add_new_list(list_key)
         except redis.Error:
             return database_error(f"while saving received items")
     print(f"Accepted {len(items)} item(s) from webhook.")
-    if not delay_processing:
-        print(f"Running worker task to transfer received item(s).")
-        asyncio.create_task(transfer_all_webhook_items())
+    if force_transfer:
+        print(f"Running transfer task over received item(s).")
+        asyncio.create_task(process_all_item_lists())
     return WebHookResponse(accepted=len(items))
 
 
