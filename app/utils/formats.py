@@ -32,6 +32,7 @@ from dateutil.tz import gettz
 from haleasy import HALEasy, LinkNotFoundError
 
 from .constants import MapContext as MC
+from ..utils import prinl
 
 
 class ANHash(HALEasy):
@@ -101,12 +102,12 @@ class ATRecord:
 
     @classmethod
     def dump_stats(cls, count: int, reset: bool = True):
-        print(f"Action Network core field counts for {count} people:")
+        prinl(f"Action Network core field counts for {count} people:")
         for fn, fc in ATRecord.an_core_fields.items():
-            print(f"\t{fn}: {fc}")
-        print(f"Action Network custom field counts for {count} people:")
+            prinl(f"\t{fn}: {fc}")
+        prinl(f"Action Network custom field counts for {count} people:")
         for fn, fc in ATRecord.an_custom_fields.items():
-            print(f"\t{fn}: {fc}")
+            prinl(f"\t{fn}: {fc}")
         if reset:
             cls.an_core_fields = {}
             cls.an_custom_fields = {}
@@ -125,10 +126,10 @@ class ATRecord:
         custom_fields = dict(record_data["fields"])
         core_field_map = MC.core_field_map()
         if not custom_fields.get(core_field_map[key]):
-            print(f"Airtable record has no {key} field; skipping it: {record_data}")
+            prinl(f"Airtable record has no {key} field; skipping it: {record_data}")
             return None
         if not custom_fields.get(core_field_map["Timestamp (EST)"]):
-            print(f"Airtable record has no Timestamp field; adding it: {record_data}")
+            prinl(f"Airtable record has no Timestamp field; adding it: {record_data}")
             custom_fields[core_field_map["Timestamp (EST)"]] = cls.epoch
         core_fields = {}
         for an_name, at_name in core_field_map.items():
@@ -185,10 +186,10 @@ class ATRecord:
         # find the amount
         amount = float(item["amount"])
         if amount == 0:
-            print(f"Donation's amount is 0, ignoring it.")
+            prinl(f"Donation's amount is 0, ignoring it.")
             return None
         if (currency := item["currency"]).lower() != "usd":
-            print(f"Donation {key} currency ({currency}) is unexpected.")
+            prinl(f"Donation {key} currency ({currency}) is unexpected.")
         # find the recurrence
         if item["action_network:recurrence"]["recurring"]:
             period = item["action_network:recurrence"]["period"]
@@ -302,19 +303,19 @@ def insert_or_update_record(an_record: ATRecord):
     at_key, at_base, at_table, at_typecast = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
     if record_dict := at.match(MC.at_key_field(), an_record.key):
-        print(f"Found existing {record_type} record for {an_record.key}.")
+        prinl(f"Found existing {record_type} record for {an_record.key}.")
         if at_record := ATRecord.from_record(record_dict):
             an_record.at_match = at_record
         else:
             raise ValueError(f"Matching record is not valid")
         updates = an_record.find_at_field_updates()
         if updates:
-            print(f"Updating {len(updates)} fields in record.")
+            prinl(f"Updating {len(updates)} fields in record.")
             at.update(at_record.record_id, updates, typecast=at_typecast)
         else:
-            print(f"No fields need update in record.")
+            prinl(f"No fields need update in record.")
     else:
-        print(f"Uploading new {record_type} record for {an_record.key}.")
+        prinl(f"Uploading new {record_type} record for {an_record.key}.")
         at.insert(an_record.all_fields(), typecast=at_typecast)
 
 
@@ -325,7 +326,7 @@ def fetch_all_records() -> Dict[str, ATRecord]:
     If more than one record has a given key, the last one fetched is kept.
     """
     record_type = MC.get()
-    print(f"Looking for {record_type} records...")
+    prinl(f"Looking for {record_type} records...")
     at_key, at_base, at_table, _ = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
     results: Dict[str, ATRecord] = {}
@@ -333,14 +334,14 @@ def fetch_all_records() -> Dict[str, ATRecord]:
         record = ATRecord.from_record(record_dict)
         if record:
             results.update({record.key: record})
-    print(f"Found {len(results)} {record_type} record(s).")
+    prinl(f"Found {len(results)} {record_type} record(s).")
     return results
 
 
 def compare_record_maps(
     at_map: Dict[str, ATRecord], an_map: Dict[str, ATRecord]
 ) -> Dict[str, Dict]:
-    print(
+    prinl(
         f"Comparing {len(at_map)} Airtable record(s) "
         f"with {len(an_map)} Action Network record(s)..."
     )
@@ -356,13 +357,13 @@ def compare_record_maps(
                 matching[at_k] = an_v
         else:
             at_only[at_k] = at_v
-    print(
+    prinl(
         f"Found {len(an_only)} new, "
         f"{len(an_newer)} updated, and "
         f"{len(matching)} matching Action Network records."
     )
     if len(at_only) > 0:
-        print(f"Found {len(at_only)} Airtable record(s) without a match.")
+        prinl(f"Found {len(at_only)} Airtable record(s) without a match.")
     result = {
         "at_only": at_only,
         "an_only": an_only,
@@ -381,8 +382,8 @@ def make_record_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
     did_update = False
     if an_only:
         did_update = True
-        print(f"Doing updates for {record_type} records...")
-        print(f"Uploading {len(an_only)} new record(s)...")
+        prinl(f"Doing updates for {record_type} records...")
+        prinl(f"Uploading {len(an_only)} new record(s)...")
         records = [r.all_fields() for r in an_only.values()]
         at.batch_insert(records, typecast=at_typecast)
     an_newer: Dict[str, ATRecord] = comparison_map["an_newer"]
@@ -394,12 +395,12 @@ def make_record_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
                 update_map[record.at_match.record_id] = updates
         if update_map:
             if not did_update:
-                print(f"Doing updates for {record_type} records...")
+                prinl(f"Doing updates for {record_type} records...")
             did_update = True
-            print(f"Updating {len(update_map)} existing record(s)...")
+            prinl(f"Updating {len(update_map)} existing record(s)...")
             for i, (record_id, updates) in enumerate(update_map.items()):
                 at.update(record_id, updates, typecast=at_typecast)
                 if (i + 1) % 10 == 0:
-                    print(f"Processed {i+1}/{len(update_map)}...")
+                    prinl(f"Processed {i+1}/{len(update_map)}...")
     if not did_update:
-        print(f"No updates required for {record_type} records.")
+        prinl(f"No updates required for {record_type} records.")

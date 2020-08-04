@@ -21,7 +21,7 @@
 #  SOFTWARE.
 import sys
 
-from app.utils import MapContext
+from app.utils import prinl, MapContext
 from app.workers.fetch_shifts import transfer_shifts
 
 if __name__ == "__main__":
@@ -29,4 +29,4 @@ if __name__ == "__main__":
     if len(sys.argv) == 2:
         transfer_shifts(sys.argv[1])
     else:
-        print("Usage: transfer_shifts.py path_to_csv_file")
+        prinl("Usage: transfer_shifts.py path_to_csv_file")
