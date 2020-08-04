@@ -64,12 +64,23 @@ def env() -> Environment:
     return lookup_env(os.getenv("ENVIRONMENT"))
 
 
+def prinl(*args, **kwargs):
+    """
+    Like print but adds the process id to the front of the line,
+    so when you are reading Heroku logs you can tell which
+    process is actually logging.
+
+    Also does an unbuffered print by default.
+    """
+    print(f"[{os.getpid()}]", *args, flush=True, **kwargs)
+
+
 def log_error(context: str) -> str:
     """Log a message about an exception, and return the message"""
     exc_type, exc_obj, exc_tb = sys.exc_info()
     f_name = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
     message = f"{context}: " f"{f_name}, {exc_tb.tb_lineno}: {repr(exc_obj)}"
-    print(message, file=sys.stderr)
+    prinl(message, file=sys.stderr)
     return message
 
 

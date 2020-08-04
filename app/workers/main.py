@@ -47,7 +47,7 @@ from typing import Optional
 
 from .webhook_transfer import process_all_item_lists
 from ..db import ItemListStore
-from ..utils import MapContext, log_error, env, Environment
+from ..utils import MapContext, prinl, log_error, env, Environment
 
 
 async def worker():
@@ -61,16 +61,16 @@ async def worker():
     try:
         while True:
             await process_all_item_lists()
-            print(f"Waiting for new items to arrive...")
+            prinl(f"Waiting for new items to arrive...")
             key = await ItemListStore.select_from_channel()
             if not key:
                 break
-            print(f"New incoming item list: {key}")
+            prinl(f"New incoming item list: {key}")
             # minimize conflict between workers with random stagger
             await asyncio.sleep(uniform(0.1, 2.0))
-        print(f"Worker stopped.")
+        prinl(f"Worker stopped.")
     except asyncio.CancelledError:
-        print(f"Worker cancelled.")
+        prinl(f"Worker cancelled.")
     except:
         log_error(f"Worker failure")
         raise
@@ -83,12 +83,12 @@ async def app():
     MapContext.initialize()
     await ItemListStore.initialize()
     try:
-        print(f"Worker started...")
+        prinl(f"Worker started...")
         await worker()
     except KeyboardInterrupt:
-        print(f"Worker shutdown.")
+        prinl(f"Worker shutdown.")
     except:
-        print(f"Worker failed.")
+        prinl(f"Worker failed.")
     finally:
         await ItemListStore.terminate()
 
@@ -110,10 +110,10 @@ class EmbeddedWorker:
         and happens before/after ours does.
         """
         try:
-            print(f"Embedded worker started...")
+            prinl(f"Embedded worker started...")
             await worker()
         except:
-            print(f"Embedded worker failed.")
+            prinl(f"Embedded worker failed.")
 
     @classmethod
     def start(cls):

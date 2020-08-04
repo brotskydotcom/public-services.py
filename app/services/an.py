@@ -29,7 +29,7 @@ from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
 from ..db import redis, ItemListStore as Store
-from ..utils import ANHash, log_error, env, Timestamp, Environment
+from ..utils import ANHash, prinl, log_error, env, Timestamp, Environment
 from ..workers import process_all_item_lists
 
 an = APIRouter()
@@ -75,7 +75,7 @@ async def receive_notification(body: List[Dict], force_transfer: bool = False):
 
     See https://actionnetwork.org/docs/webhooks for details.
     """
-    print(f"Received webhook with {len(body)} hash(es).")
+    prinl(f"Received webhook with {len(body)} hash(es).")
     items = ANHash.find_items(data=body)
     if items:
         values = [pickle.dumps((item.form_name, item.body)) for item in items]
@@ -85,9 +85,9 @@ async def receive_notification(body: List[Dict], force_transfer: bool = False):
             await Store.add_new_list(list_key)
         except redis.Error:
             return database_error(f"while saving received items")
-    print(f"Accepted {len(items)} item(s) from webhook.")
+    prinl(f"Accepted {len(items)} item(s) from webhook.")
     if force_transfer:
-        print(f"Running transfer task over received item(s).")
+        prinl(f"Running transfer task over received item(s).")
         asyncio.create_task(process_all_item_lists())
     return WebHookResponse(accepted=len(items))
 
@@ -111,7 +111,7 @@ async def get_pending_items():
     ani_key: str = redis.get_key("Submitted Items")
     if env() is Environment.PROD:
         raise HTTPException(403, detail="Access to production data is not allowed")
-    print("Retrieving all pending submissions...")
+    prinl("Retrieving all pending submissions...")
     results = []
     try:
         submissions = await redis.db.lrange(ani_key, 0, -1, encoding="ascii")
@@ -122,5 +122,5 @@ async def get_pending_items():
                 results.append(Submission(form_name=form_name, body=body))
     except redis.Error:
         return database_error("while retrieving submissions")
-    print(f"Returning {len(results)} pending submissions.")
+    prinl(f"Returning {len(results)} pending submissions.")
     return results

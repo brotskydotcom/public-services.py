@@ -29,6 +29,7 @@ from ..db import redis, ItemListStore as Store
 from ..utils import (
     Environment,
     env,
+    prinl,
     log_error,
     MapContext as MC,
     ATRecord,
@@ -43,7 +44,7 @@ async def process_item_list(key: str) -> Optional[str]:
     If there are temporary failures with some of the items on the list,
     we make a list of the items that failed, and return it.
     """
-    print(f"Processing webhook items on list '{key}'...")
+    prinl(f"Processing webhook items on list '{key}'...")
     success_count, fail_count = 0, 0
     environ, ident, rc = key.split(":")
     retry_key = f"{environ}:{ident}:{int(rc) + 1}"
@@ -52,13 +53,13 @@ async def process_item_list(key: str) -> Optional[str]:
         item = ANHash.from_parts(form_name, body)
         try:
             if form_name == "donation":
-                print(f"Found donation item.")
+                prinl(f"Found donation item.")
                 await transfer_donation(item)
             elif form_name == "upload":
-                print(f"Found upload item.")
+                prinl(f"Found upload item.")
                 await transfer_person(item)
             else:
-                print(f"Found {form_name} submission item.")
+                prinl(f"Found {form_name} submission item.")
                 await transfer_person(item)
             success_count += 1
             if env() is Environment.DEV:
@@ -76,13 +77,13 @@ async def process_item_list(key: str) -> Optional[str]:
                 logging_key = redis.get_key("Failed to process")
                 await redis.db.rpush(logging_key, item_data)
     if fail_count > 0:
-        print(f"Failed to process {fail_count} item(s) on list '{key}'.")
+        prinl(f"Failed to process {fail_count} item(s) on list '{key}'.")
         if int(rc) >= 5:
-            print(f"Have already retried 5 times, giving up on failed items.")
+            prinl(f"Have already retried 5 times, giving up on failed items.")
         else:
-            print(f"Saving failed item(s) for retry on list '{retry_key}'.")
+            prinl(f"Saving failed item(s) for retry on list '{retry_key}'.")
             return retry_key
-    print(f"Successfully processed {success_count} item(s) on list '{key}'.")
+    prinl(f"Successfully processed {success_count} item(s) on list '{key}'.")
     return None
 
 
@@ -116,7 +117,7 @@ async def transfer_person(item: ANHash) -> str:
 
 
 async def process_all_item_lists() -> Tuple[int, int]:
-    print(f"Processing ready item lists...")
+    prinl(f"Processing ready item lists...")
     count, retry_count = 0, 0
     try:
         while list_key := await Store.select_for_processing():
@@ -132,5 +133,5 @@ async def process_all_item_lists() -> Tuple[int, int]:
     except:
         log_error(f"Unexpected failure")
     finally:
-        print(f"Processed {count} item list(s); got {retry_count} retry list(s).")
+        prinl(f"Processed {count} item list(s); got {retry_count} retry list(s).")
     return count, retry_count

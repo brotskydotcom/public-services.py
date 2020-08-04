@@ -29,7 +29,7 @@ from typing import ClassVar, Dict, Optional, Any, List, Tuple
 import botocore.client
 import botocore.session
 
-from app.utils import env, Environment, lookup_env
+from app.utils import env, Environment, lookup_env, prinl
 
 
 class MapContext:
@@ -89,11 +89,11 @@ class MapContext:
         if not (contexts.get("person") and contexts.get("donation")):
             raise ValueError(f"Contexts must include 'person' and 'donation'")
         cls.known_maps = contexts
-        print(f"Loaded {len(contexts)} contexts in {env().name} environment.")
+        prinl(f"Loaded {len(contexts)} contexts in {env().name} environment.")
 
     @classmethod
     def load_config_from_aws(cls):
-        print("Loading form context from AWS...")
+        prinl("Loading form context from AWS...")
         client, bucket, key = cls.get_client_and_target()
         response = client.get_object(Bucket=bucket, Key=key)
         if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
@@ -104,7 +104,7 @@ class MapContext:
 
     @classmethod
     def load_config_locally(cls, config_path: str):
-        print(f"Loading config from '{config_path}'...")
+        prinl(f"Loading config from '{config_path}'...")
         with open(config_path, "r", encoding="utf-8") as fp:
             form_data = json.load(fp)
         cls.load_config_from_json(form_data)

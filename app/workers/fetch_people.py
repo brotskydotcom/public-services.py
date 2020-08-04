@@ -24,6 +24,7 @@ from typing import Dict, List, Set, Sequence
 import requests
 
 from ..utils import (
+    prinl,
     Environment,
     env,
     MapContext as MC,
@@ -43,7 +44,7 @@ def fetch_submitter_urls(form_name: str) -> Set[str]:
     Since the AN submissions endpoint pages its results,
     we have to iterate through each page.
     """
-    print(f"Looking for submissions of form {form_name}...")
+    prinl(f"Looking for submissions of form {form_name}...")
     session = requests.session()
     session.headers = MC.an_headers()
     submitter_urls = set()
@@ -57,27 +58,27 @@ def fetch_submitter_urls(form_name: str) -> Set[str]:
         item = ANHash.from_parts("submissions", submission)
         urls = item.get_link_urls("osdi:submissions")
         total_pages = item.properties()["total_pages"]
-        print(
+        prinl(
             f"Processing {len(urls)} submissions " f"on page {page} of {total_pages}..."
         )
         page += 1
         for i, url in enumerate(urls):
             response = session.get(url)
             if response.status_code != 200:
-                print(f"Response error on item {i}: {response.status_code}.")
-                print(f"Submitter url was: {url}")
+                prinl(f"Response error on item {i}: {response.status_code}.")
+                prinl(f"Submitter url was: {url}")
                 continue
             response.encoding = "utf-8"
             submission = response.json()
             item = ANHash.from_parts(form_name, submission)
             submitter_url = item.get_link_url("osdi:person")
             if not submitter_url:
-                print(f"No person on submission: {submission}")
+                prinl(f"No person on submission: {submission}")
                 continue
             submitter_urls.add(submitter_url)
             if (i + 1) % 10 == 0:
-                print(f"Processed {i + 1}/{len(urls)}...")
-    print(f"Found {len(submitter_urls)} submitter(s).")
+                prinl(f"Processed {i + 1}/{len(urls)}...")
+    prinl(f"Found {len(submitter_urls)} submitter(s).")
     return submitter_urls
 
 
@@ -89,7 +90,7 @@ def fetch_all_people_urls() -> List[str]:
     Since the AN people endpoint pages its results,
     we have to iterate through each page.
     """
-    print(f"Looking for all people...")
+    prinl(f"Looking for all people...")
     session = requests.session()
     session.headers = MC.an_headers()
     url = MC.an_people_url()
@@ -104,9 +105,9 @@ def fetch_all_people_urls() -> List[str]:
         links = item.get_link_urls("osdi:people")
         people_urls += links
         page += 1
-        print(f"Found {len(links)} people on page {page}...")
+        prinl(f"Found {len(links)} people on page {page}...")
         url = item.get_link_url("next")
-    print(f"Found {len(people_urls)} people on {page} page(s).")
+    prinl(f"Found {len(people_urls)} people on {page} page(s).")
     return people_urls
 
 
@@ -116,7 +117,7 @@ def fetch_people(people_urls: Sequence[str]) -> Dict[str, ATRecord]:
     including their core fields and custom form fields,
     and make records out of them (indexed by email address).
     """
-    print(f"Creating records for {len(people_urls)} people...")
+    prinl(f"Creating records for {len(people_urls)} people...")
     session = requests.session()
     session.headers = MC.an_headers()
     people: Dict[str, ATRecord] = {}  # Map emails to records
@@ -128,15 +129,15 @@ def fetch_people(people_urls: Sequence[str]) -> Dict[str, ATRecord]:
         record = ATRecord.from_person(submitter_data)
         people[record.key] = record
         if (i + 1) % 10 == 0:
-            print(f"Processed {i+1}/{len(people_urls)}...")
-    print(f"Created {len(people)} records for people.")
+            prinl(f"Processed {i+1}/{len(people_urls)}...")
+    prinl(f"Created {len(people)} records for people.")
     if env() is Environment.DEV:
         ATRecord.dump_stats(len(people))
     return people
 
 
 def transfer_people(form_names: List[str] = None):
-    print(f"Transferring people...")
+    prinl(f"Transferring people...")
     MC.set("person")
     record_map = fetch_all_records()
     if form_names:
@@ -148,4 +149,4 @@ def transfer_people(form_names: List[str] = None):
     people_map = fetch_people(urls)
     comparison_map = compare_record_maps(record_map, people_map)
     make_record_updates(comparison_map)
-    print(f"Finished transferring people.")
+    prinl(f"Finished transferring people.")
