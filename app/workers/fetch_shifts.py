@@ -82,6 +82,12 @@ def transfer_shifts(csv_name: str):
 
     MC.set("person")
     people_comparison_map = compare_record_maps(airtable_people, attendees)
+    # We are planning on first uploading any new Mobilize people to Action Network
+    # to be imported to Airtable through the Action Network integration, so we are
+    # setting the map of people records where Mobilize is newer than Airtable to be empty
+    # so that we never override any people records that Action Network has already uploaded
+    # to Airtable
+    people_comparison_map["an_newer"] = {}
     make_record_updates(people_comparison_map)
 
     MC.set("shift")
