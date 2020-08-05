@@ -316,7 +316,9 @@ def insert_or_update_record(an_record: ATRecord, update_if_existing: bool = True
             else:
                 prinl(f"No fields need update in record.")
         else:
-            prinl(f"Found existing {record_type} record for {an_record.key}, not updating record.")
+            prinl(
+                f"Found existing {record_type} record for {an_record.key}, not updating record."
+            )
     else:
         prinl(f"Uploading new {record_type} record for {an_record.key}.")
         at.insert(an_record.all_fields(), typecast=at_typecast)

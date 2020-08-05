@@ -35,7 +35,7 @@ else:
 
 # add the sub-APIs
 app.include_router(an, prefix="/action_network", tags=["action_network"])
-app.include_router(mobilize, prefix="/mobilize", tags=["mobilize"] )
+app.include_router(mobilize, prefix="/mobilize", tags=["mobilize"])
 
 
 @app.on_event("startup")

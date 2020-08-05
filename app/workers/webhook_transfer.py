@@ -118,7 +118,8 @@ async def transfer_person(item: ANHash) -> str:
     insert_or_update_record(an_record)
     return an_record.key
 
-async def transfer_shift(item: Dict[str, str]) -> str: 
+
+async def transfer_shift(item: Dict[str, str]) -> str:
     """Transfer the shift to Airtable"""
     MC.set("person")
     attendee_record = ATRecord.from_mobilize_person(item)
@@ -128,6 +129,7 @@ async def transfer_shift(item: Dict[str, str]) -> str:
     shift_record = ATRecord.from_mobilize(item)
     shift_record.core_fields["email"] = [item["email"]]
     insert_or_update_record(shift_record)
+
 
 async def process_all_item_lists() -> Tuple[int, int]:
     prinl(f"Processing ready item lists...")

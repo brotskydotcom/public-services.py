@@ -40,17 +40,20 @@ mobilize = APIRouter()
 mobilize.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+
 def database_error(context: str) -> JSONResponse:
     message = log_error(f"Database error: {context}")
     return JSONResponse(status_code=502, content={"detail": message})
+
 
 @mobilize.get("/uploadcsv", response_class=HTMLResponse)
 async def upload_csv(request: Request):
     return templates.TemplateResponse("upload_csv.html", {"request": request})
 
+
 @mobilize.post("/transfercsv")
 async def transfer_csv(file: UploadFile = File(...), force_transfer: bool = False):
-    if file.filename.endswith('.csv'):
+    if file.filename.endswith(".csv"):
         df = pd.read_csv(file.file, na_filter=False)
         df = df.astype(str)
 
@@ -64,7 +67,7 @@ async def transfer_csv(file: UploadFile = File(...), force_transfer: bool = Fals
                 heading = headings[i]
                 row_data[heading] = entry
             items.append(pickle.dumps(("shift", row_data)))
-        try: 
+        try:
             await redis.db.rpush(list_key, *items)
             await Store.add_new_list(list_key)
         except redis.Error:
@@ -73,7 +76,6 @@ async def transfer_csv(file: UploadFile = File(...), force_transfer: bool = Fals
         if force_transfer:
             prinl(f"Running transfer task over received item(s).")
             asyncio.create_task(process_all_item_lists())
-        return {"message": f"Accepted {len(items)} shifts from Mobilize CSV"} 
+        return {"message": f"Accepted {len(items)} shifts from Mobilize CSV"}
     else:
         return {"error": "file should be csv file"}
-    
