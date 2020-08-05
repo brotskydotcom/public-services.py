@@ -21,7 +21,7 @@
 #  SOFTWARE.
 import asyncio
 import pickle
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 
 import aiohttp
 
@@ -50,17 +50,20 @@ async def process_item_list(key: str) -> Optional[str]:
     retry_key = f"{environ}:{ident}:{int(rc) + 1}"
     while item_data := await redis.db.lpop(key):
         form_name, body = pickle.loads(item_data)
-        item = ANHash.from_parts(form_name, body)
         try:
-            if form_name == "donation":
-                prinl(f"Found donation item.")
-                await transfer_donation(item)
-            elif form_name == "upload":
-                prinl(f"Found upload item.")
-                await transfer_person(item)
+            if form_name == "shift":
+                prinl(f"Found shift item.")
+                await transfer_shift(body)
             else:
-                prinl(f"Found {form_name} submission item.")
-                await transfer_person(item)
+                item = ANHash.from_parts(form_name, body)
+                if form_name == "donation":
+                    prinl(f"Found donation item.")
+                    await transfer_donation(item)
+                elif form_name == "upload":
+                    prinl(f"Found upload item.")
+                else:
+                    prinl(f"Found {form_name} submission item.")
+                    await transfer_person(item)
             success_count += 1
             if env() is Environment.DEV:
                 logging_key = redis.get_key("Successfully processed")
@@ -115,6 +118,16 @@ async def transfer_person(item: ANHash) -> str:
     insert_or_update_record(an_record)
     return an_record.key
 
+async def transfer_shift(item: Dict[str, str]) -> str: 
+    """Transfer the shift to Airtable"""
+    MC.set("person")
+    attendee_record = ATRecord.from_mobilize_person(item)
+    insert_or_update_record(attendee_record, False)
+
+    MC.set("shift")
+    shift_record = ATRecord.from_mobilize(item)
+    shift_record.core_fields["email"] = [item["email"]]
+    insert_or_update_record(shift_record)
 
 async def process_all_item_lists() -> Tuple[int, int]:
     prinl(f"Processing ready item lists...")

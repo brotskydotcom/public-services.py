@@ -23,6 +23,7 @@
 from fastapi import FastAPI
 
 from .an import an
+from .mobilize import mobilize
 from ..db import ItemListStore
 from ..utils import env, Environment, MapContext
 from ..workers import EmbeddedWorker
@@ -34,6 +35,7 @@ else:
 
 # add the sub-APIs
 app.include_router(an, prefix="/action_network", tags=["action_network"])
+app.include_router(mobilize, prefix="/mobilize", tags=["mobilize"] )
 
 
 @app.on_event("startup")
