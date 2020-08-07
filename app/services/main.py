@@ -21,6 +21,7 @@
 #  SOFTWARE.
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from .an import an
 from .mobilize import mobilize
@@ -33,6 +34,7 @@ if env() in (Environment.DEV, Environment.STAGE):
 else:
     app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 
+app.mount("/docs", StaticFiles(directory="docs"), name="docs")
 # add the sub-APIs
 app.include_router(an, prefix="/action_network", tags=["action_network"])
 app.include_router(mobilize, prefix="/mobilize", tags=["mobilize"])

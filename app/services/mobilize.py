@@ -27,8 +27,7 @@ import pandas as pd
 from typing import Dict
 from fastapi import APIRouter
 from fastapi import FastAPI, File, UploadFile, Request
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
@@ -37,7 +36,6 @@ from ..db import redis, ItemListStore as Store
 from ..workers import process_all_item_lists
 
 mobilize = APIRouter()
-mobilize.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 
@@ -46,36 +44,49 @@ def database_error(context: str) -> JSONResponse:
     return JSONResponse(status_code=502, content={"detail": message})
 
 
-@mobilize.get("/uploadcsv", response_class=HTMLResponse)
+@mobilize.get("/uploadcsv", response_class=FileResponse)
 async def upload_csv(request: Request):
-    return templates.TemplateResponse("upload_csv.html", {"request": request})
+    return FileResponse("docs/upload_csv.html")
 
 
-@mobilize.post("/transfercsv")
-async def transfer_csv(file: UploadFile = File(...), force_transfer: bool = False):
+@mobilize.post("/transfercsv", response_class=HTMLResponse)
+async def transfer_csv(
+    request: Request, file: UploadFile = File(...), force_transfer: bool = False
+):
     if file.filename.endswith(".csv"):
-        df = pd.read_csv(file.file, na_filter=False)
-        df = df.astype(str)
+        try:
+            df = pd.read_csv(file.file, na_filter=False)
+        except:
+            return templates.TemplateResponse(
+                "error.html", {"request": request, "msg": "Error reading csv file"}
+            )
 
+        df = df.astype(str)
         data = df.values.tolist()
         headings = df.columns.values.tolist()
         list_key = f"{env().name}:{Timestamp()}:0"
-        items = []
-        for row in data:
-            row_data: Dict[str, str] = {}
-            for i, entry in enumerate(row):
-                heading = headings[i]
-                row_data[heading] = entry
-            items.append(pickle.dumps(("shift", row_data)))
+        items = [pickle.dumps(("shift", dict(zip(headings, row)))) for row in data]
         try:
             await redis.db.rpush(list_key, *items)
             await Store.add_new_list(list_key)
         except redis.Error:
-            return database_error("while saving received items")
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "msg": "Database error while saving received items",
+                },
+            )
+            # return database_error("while saving received items")
         prinl(f"Accepted {len(items)} item(s) from Mobilize CSV.")
         if force_transfer:
             prinl(f"Running transfer task over received item(s).")
             asyncio.create_task(process_all_item_lists())
-        return {"message": f"Accepted {len(items)} shifts from Mobilize CSV"}
+        return templates.TemplateResponse(
+            "success.html", {"request": request, "num_shifts": len(items)}
+        )
+        # {"message": f"Accepted {len(items)} shifts from Mobilize CSV"}
     else:
-        return {"error": "file should be csv file"}
+        return templates.TemplateResponse(
+            "error.html", {"request": request, "msg": "File should be CSV file type"}
+        )
