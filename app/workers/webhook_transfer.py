@@ -67,6 +67,7 @@ async def process_item_list(key: str) -> Optional[str]:
             success_count += 1
             if env() is Environment.DEV:
                 logging_key = redis.get_key("Successfully processed")
+                print("logged??")
                 await redis.db.rpush(logging_key, item_data)
         except ValueError as e:
             msg = e.args[0] if e.args else "Invalid data"
@@ -123,7 +124,7 @@ async def transfer_shift(item: Dict[str, str]) -> str:
     """Transfer the shift to Airtable"""
     MC.set("person")
     attendee_record = ATRecord.from_mobilize_person(item)
-    insert_or_update_record(attendee_record, True)
+    insert_or_update_record(attendee_record, insert_only=True)
 
     MC.set("shift")
     shift_record = ATRecord.from_mobilize(item)

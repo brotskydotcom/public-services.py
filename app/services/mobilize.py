@@ -27,7 +27,7 @@ import pandas as pd
 from typing import Dict
 from fastapi import APIRouter
 from fastapi import FastAPI, File, UploadFile, Request
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
@@ -44,11 +44,6 @@ def database_error(context: str) -> JSONResponse:
     return JSONResponse(status_code=502, content={"detail": message})
 
 
-@mobilize.get("/uploadcsv", response_class=FileResponse)
-async def upload_csv(request: Request):
-    return FileResponse("docs/upload_csv.html")
-
-
 @mobilize.post("/transfercsv", response_class=HTMLResponse)
 async def transfer_csv(
     request: Request, file: UploadFile = File(...), force_transfer: bool = False
@@ -57,8 +52,9 @@ async def transfer_csv(
         try:
             df = pd.read_csv(file.file, na_filter=False)
         except:
+            message = log_error("Error reading csv file")
             return templates.TemplateResponse(
-                "error.html", {"request": request, "msg": "Error reading csv file"}
+                "upload_error.html", {"request": request, "msg": message}
             )
 
         df = df.astype(str)
@@ -70,23 +66,20 @@ async def transfer_csv(
             await redis.db.rpush(list_key, *items)
             await Store.add_new_list(list_key)
         except redis.Error:
+            message = log_error("Database error while saving received items")
             return templates.TemplateResponse(
-                "error.html",
-                {
-                    "request": request,
-                    "msg": "Database error while saving received items",
-                },
+                "upload_error.html", {"request": request, "msg": message,},
             )
-            # return database_error("while saving received items")
         prinl(f"Accepted {len(items)} item(s) from Mobilize CSV.")
         if force_transfer:
             prinl(f"Running transfer task over received item(s).")
             asyncio.create_task(process_all_item_lists())
         return templates.TemplateResponse(
-            "success.html", {"request": request, "num_shifts": len(items)}
+            "upload_success.html",
+            {"request": request, "num_shifts": len(items), "filename": file.filename},
         )
-        # {"message": f"Accepted {len(items)} shifts from Mobilize CSV"}
     else:
+        message = log_error(f"File {file.filename} should be CSV file type")
         return templates.TemplateResponse(
-            "error.html", {"request": request, "msg": "File should be CSV file type"}
+            "upload_error.html", {"request": request, "msg": message}
         )

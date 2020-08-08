@@ -34,6 +34,7 @@ if env() in (Environment.DEV, Environment.STAGE):
 else:
     app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 
+# mounts an "independent" app on the /docs path that handles static files
 app.mount("/docs", StaticFiles(directory="docs"), name="docs")
 # add the sub-APIs
 app.include_router(an, prefix="/action_network", tags=["action_network"])
