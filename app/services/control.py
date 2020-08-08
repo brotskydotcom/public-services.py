@@ -62,19 +62,17 @@ async def deferrals(reprocess: bool = False):
     Report the count of deferred item lists, and restart their
     processing if requested.
     """
-    # TODO: maybe move the deferred list to the item list store?
-    deferred_key = redis.get_key("Deferred failures")
     try:
         if reprocess:
             count = 0
-            while key := await redis.db.rpoplpush(deferred_key, deferred_key):
+            while key := await Store.select_for_undeferral():
                 count += 1
                 await Store.add_new_list(key)
-                await redis.db.lrem(deferred_key, 1, key)
+                await Store.remove_deferred_list(key)
             prinl(f"Restarted {count} deferred item lists.")
             return DeferralResponse(restarted_count=count)
         else:
-            count = await redis.db.llen(deferred_key)
+            count = await Store.get_deferred_count()
             prinl(f"There are {count} deferred item lists.")
             return DeferralResponse(deferred_count=count)
     except redis.Error:

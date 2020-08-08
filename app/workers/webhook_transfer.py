@@ -89,9 +89,7 @@ async def process_item_list(key: str) -> Optional[str]:
             return retry_key
         else:
             prinl(f"Deferring failed item(s) for later on list '{retry_key}'.")
-            # TODO: maybe move the deferred list to the item list store?
-            deferred_key = redis.get_key("Deferred failures")
-            await redis.db.lpush(deferred_key, retry_key)
+            await Store.add_deferred_list(retry_key)
     return None
 
 
@@ -133,7 +131,7 @@ async def process_all_item_lists() -> Tuple[int, int]:
             fail_key = await process_item_list(list_key)
             if fail_key:
                 await Store.add_retry_list(fail_key)
-            await Store.remove_item_list(list_key)
+            await Store.remove_processed_list(list_key)
     except redis.Error:
         log_error(f"Database failure")
     except asyncio.CancelledError:
