@@ -76,6 +76,11 @@ class ItemListStore:
     The sorted set of items with their next-ready times.
     """
 
+    circle_key: ClassVar[str] = redis.get_key("Deferred Item Lists")
+    """
+    The circular list of deferred item lists.
+    """
+
     item_list_channel_name: ClassVar[str] = redis.get_key("Item List Ready")
     """
     Redis pub/sub channel where items that are ready to process
@@ -128,11 +133,46 @@ class ItemListStore:
         return result
 
     @classmethod
-    async def remove_item_list(cls, key: str) -> Any:
+    async def remove_processed_list(cls, key: str) -> Any:
         """
         Remove a processed item list from the set.
         """
         result = await cls.db.zrem(cls.set_key, key)
+        return result
+
+    @classmethod
+    async def add_deferred_list(cls, key: str) -> Any:
+        """
+        Add a deferred item list to the list of them.
+        This is a circular list that adds on the left.
+        """
+        result = await cls.db.lpush(cls.circle_key, key)
+        return result
+
+    @classmethod
+    async def remove_deferred_list(cls, key: str) -> Any:
+        """
+        Remove a processed item list from the set.
+        """
+        result = await cls.db.lrem(cls.circle_key, 1, key)
+        return result
+
+    @classmethod
+    async def get_deferred_count(cls) -> int:
+        """
+        Return the count of deferred item lists.
+        """
+        result = await cls.db.llen(cls.circle_key)
+        return result
+
+    @classmethod
+    async def select_for_undeferral(cls) -> Optional[str]:
+        """
+        Find the oldest deferred list and return it.
+        The returned list is made the most recently deferred.
+        Returns None if there are no more deferred lists.
+        """
+        result = await cls.db.rpoplpush(cls.circle_key, cls.circle_key)
         return result
 
     @classmethod
