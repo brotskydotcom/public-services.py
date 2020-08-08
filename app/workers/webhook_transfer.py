@@ -72,7 +72,6 @@ async def process_item_list(key: str) -> Optional[str]:
             success_count += 1
             if env() is Environment.DEV:
                 logging_key = redis.get_key("Successfully processed")
-                print("logged??")
                 await redis.db.rpush(logging_key, item_data)
         except ValueError as e:
             msg = e.args[0] if e.args else "Invalid data"

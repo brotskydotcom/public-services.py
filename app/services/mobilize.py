@@ -79,7 +79,10 @@ async def transfer_csv(
             {"request": request, "num_shifts": len(items), "filename": file.filename},
         )
     else:
-        message = log_error(f"File {file.filename} should be CSV file type")
         return templates.TemplateResponse(
-            "upload_error.html", {"request": request, "msg": message}
+            "upload_error.html",
+            {
+                "request": request,
+                "msg": f"File {file.filename} should be CSV file type",
+            },
         )
