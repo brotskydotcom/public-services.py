@@ -47,7 +47,12 @@ async def process_item_list(key: str) -> Optional[str]:
     prinl(f"Processing webhook items on list '{key}'...")
     success_count, fail_count = 0, 0
     environ, ident, rc = key.split(":")
-    retry_key = f"{environ}:{ident}:{int(rc) + 1}"
+    if int(rc) < 5:
+        retry_key = f"{environ}:{ident}:{int(rc) + 1}"
+        retry = True
+    else:
+        retry_key = f"{environ}:{ident}:0"
+        retry = False
     while item_data := await redis.db.lpop(key):
         form_name, body = pickle.loads(item_data)
         item = ANHash.from_parts(form_name, body)
@@ -76,14 +81,17 @@ async def process_item_list(key: str) -> Optional[str]:
             if env() is Environment.DEV:
                 logging_key = redis.get_key("Failed to process")
                 await redis.db.rpush(logging_key, item_data)
+    prinl(f"Successfully processed {success_count} item(s) on list '{key}'.")
     if fail_count > 0:
         prinl(f"Failed to process {fail_count} item(s) on list '{key}'.")
-        if int(rc) >= 5:
-            prinl(f"Have already retried 5 times, giving up on failed items.")
-        else:
+        if retry:
             prinl(f"Saving failed item(s) for retry on list '{retry_key}'.")
             return retry_key
-    prinl(f"Successfully processed {success_count} item(s) on list '{key}'.")
+        else:
+            prinl(f"Deferring failed item(s) for later on list '{retry_key}'.")
+            # TODO: maybe move the deferred list to the item list store?
+            deferred_key = redis.get_key("Deferred failures")
+            await redis.db.lpush(deferred_key, retry_key)
     return None
 
 
