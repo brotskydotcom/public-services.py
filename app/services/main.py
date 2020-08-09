@@ -21,9 +21,11 @@
 #  SOFTWARE.
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from .an import an
 from .control import control
+from .mobilize import mobilize
 from ..db import ItemListStore
 from ..utils import env, Environment, MapContext
 from ..workers import EmbeddedWorker
@@ -33,9 +35,12 @@ if env() in (Environment.DEV, Environment.STAGE):
 else:
     app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
 
+# mounts an "independent" app on the /docs path that handles static files
+app.mount("/docs", StaticFiles(directory="docs"), name="docs")
 # add the sub-APIs
 app.include_router(an, prefix="/action_network", tags=["action_network"])
 app.include_router(control, prefix="/control", tags=["control"])
+app.include_router(mobilize, prefix="/mobilize", tags=["mobilize"])
 
 
 @app.on_event("startup")

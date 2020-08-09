@@ -226,7 +226,7 @@ class ATRecord:
 
         for key in ["attended", "rating", "Spanish", "status"]:
             if not data.get(key):
-                del data[key]
+                data.pop(key, None)
 
         updated_time = data["signup updated time"]
         est_time_str = cls.convert_to_est(updated_time)
@@ -297,12 +297,21 @@ class ATRecord:
         return updates
 
 
-def insert_or_update_record(an_record: ATRecord):
+def insert_or_update_record(an_record: ATRecord, insert_only: bool = False):
     """Given an AN record for an already-set context, insert or update Airtable"""
     record_type = MC.get()
     at_key, at_base, at_table, at_typecast = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
-    if record_dict := at.match(MC.at_key_field(), an_record.key):
+
+    record_dict = at.match(MC.at_key_field(), an_record.key)
+    if not record_dict:
+        prinl(f"Uploading new {record_type} record for {an_record.key}.")
+        at.insert(an_record.all_fields(), typecast=at_typecast)
+    elif insert_only:
+        prinl(
+            f"Found existing {record_type} record for {an_record.key}, not updating record."
+        )
+    else:
         prinl(f"Found existing {record_type} record for {an_record.key}.")
         if at_record := ATRecord.from_record(record_dict):
             an_record.at_match = at_record
@@ -314,9 +323,6 @@ def insert_or_update_record(an_record: ATRecord):
             at.update(at_record.record_id, updates, typecast=at_typecast)
         else:
             prinl(f"No fields need update in record.")
-    else:
-        prinl(f"Uploading new {record_type} record for {an_record.key}.")
-        at.insert(an_record.all_fields(), typecast=at_typecast)
 
 
 def fetch_all_records() -> Dict[str, ATRecord]:
