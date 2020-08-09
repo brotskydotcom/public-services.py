@@ -226,7 +226,7 @@ class ATRecord:
 
         for key in ["attended", "rating", "Spanish", "status"]:
             if not data.get(key):
-                del data[key]
+                data.pop(key, None)
 
         updated_time = data["signup updated time"]
         est_time_str = cls.convert_to_est(updated_time)
