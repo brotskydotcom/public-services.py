@@ -253,8 +253,13 @@ class ATRecord:
             "Full name": data["first name"] + " " + data["last name"],
             "Timestamp (EST)": cls.convert_to_est(data["signup updated time"]),
         }
+        person_custom_fields = {}
+        if utm_source := data.get("utm_source"):
+            person_custom_fields["utm_source"] = utm_source
 
-        return cls._from_fields(key="Email", core=person_core_fields, custom={})
+        return cls._from_fields(
+            key="Email", core=person_core_fields, custom=person_custom_fields
+        )
 
     @classmethod
     def convert_to_est(cls, utc_str: str) -> str:

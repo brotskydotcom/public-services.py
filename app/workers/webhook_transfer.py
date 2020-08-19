@@ -129,7 +129,10 @@ async def transfer_shift(item: Dict[str, str]) -> str:
     """Transfer the shift to Airtable"""
     MC.set("person")
     attendee_record = ATRecord.from_mobilize_person(item)
-    insert_or_update_record(attendee_record, insert_only=True)
+    if attendee_record.custom_fields.get("utm_source"):
+        insert_or_update_record(attendee_record)
+    else:
+        insert_or_update_record(attendee_record, insert_only=True)
 
     MC.set("shift")
     shift_record = ATRecord.from_mobilize(item)
