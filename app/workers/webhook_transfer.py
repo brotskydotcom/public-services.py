@@ -145,6 +145,7 @@ async def process_all_item_lists() -> Tuple[int, int]:
             count += 1
             fail_key = await process_item_list(list_key)
             if fail_key:
+                retry_count += 1
                 await Store.add_retry_list(fail_key)
             await Store.remove_processed_list(list_key)
     except redis.Error:
