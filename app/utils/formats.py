@@ -89,6 +89,9 @@ class ANHash(HALEasy):
 class ATRecord:
     key: str
     mod_date: datetime
+    # TODO: Fix the asymmetry in the naming of fields
+    # - core fields have their *source* name
+    # - custom fields have their *target* name
     core_fields: Dict[str, Any]
     custom_fields: Dict[str, Any]
     record_id: Optional[str] = ""
@@ -240,7 +243,7 @@ class ATRecord:
         for name, value in data.items():
             target_name = MC.target_custom_field(name)
             if target_name:
-                custom_fields[name] = value
+                custom_fields[target_name] = value
 
         return cls._from_fields(key="shift id", core=core_fields, custom=custom_fields)
 
@@ -254,7 +257,15 @@ class ATRecord:
             "Timestamp (EST)": cls.convert_to_est(data["signup updated time"]),
         }
 
-        return cls._from_fields(key="Email", core=person_core_fields, custom={})
+        person_custom_fields = {}
+        target_name = MC.target_custom_field("utm_source")
+        target_data = data.get("utm_source")
+        if target_name and target_data:
+            person_custom_fields[target_name] = target_data
+
+        return cls._from_fields(
+            key="Email", core=person_core_fields, custom=person_custom_fields
+        )
 
     @classmethod
     def convert_to_est(cls, utc_str: str) -> str:
