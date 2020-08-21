@@ -110,7 +110,7 @@ async def transfer_donation(item: ANHash):
 
 async def transfer_donation_page(item: ANHash):
     """Transfer the donation page to Airtable."""
-    MC.set("donation_page")
+    MC.set("donation page")
     url = item.get_link_url("osdi:fundraising_page")
     if not url:
         raise ValueError("No fundraising page link")
