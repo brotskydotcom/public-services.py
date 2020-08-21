@@ -224,7 +224,13 @@ class ATRecord:
             "Timestamp (EST)": cls.convert_to_est(data["modified_date"]),
         }
         custom_fields = {}
-        for field in ["name", "title", "total_donations", "total_amount"]:
+        for field in [
+            "name",
+            "title",
+            "browser_url",
+            "total_donations",
+            "total_amount",
+        ]:
             target_name = MC.target_custom_field(field)
             target_data = data.get(field)
             if target_name and target_data:

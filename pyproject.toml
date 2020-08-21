@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "public-services"
-version = "2.1"
+version = "2.3"
 description = "Public services from Dan Brotsky Consulting"
 authors = ["Daniel Brotsky <dev@brotsky.com>"]
 
