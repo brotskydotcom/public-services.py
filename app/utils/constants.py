@@ -23,13 +23,13 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field, replace
 from typing import ClassVar, Dict, Optional, Any, List, Tuple
 
 import botocore.client
 import botocore.session
 
-from app.utils import env, Environment, lookup_env, prinl
+from app.utils import env, Environment, prinl
 
 
 class MapContext:
@@ -45,12 +45,13 @@ class MapContext:
     @dataclass
     class MapData:
         name: str
-        an_headers: Dict[str, str]
-        at_account_key: str
-        at_database_key: str
-        at_table_name: str
-        at_typecast: bool
-        an_core_field_map: Dict[str, str]
+        environments: [str] = field(default_factory=list)
+        at_account_key: str = "no-account-key"
+        at_database_key: str = "no-database-key"
+        at_table_name: str = "no-table-name"
+        at_typecast: bool = False
+        an_headers: Dict[str, str] = field(default_factory=dict)
+        an_core_field_map: Dict[str, str] = field(default_factory=dict)
         an_forms: Dict[str, str] = field(default_factory=dict)
         an_custom_field_prefixes: List[str] = field(default_factory=list)
         an_custom_field_map: Dict[str, str] = field(default_factory=dict)
@@ -64,7 +65,7 @@ class MapContext:
         secret = os.getenv("AWS_SECRET_ACCESS_KEY", "")
         region = os.getenv("AWS_REGION_NAME", "")
         bucket = os.getenv("AWS_BUCKET_NAME", "public-services.brotsky.net")
-        path = os.getenv("AWS_CONFIG_PATH", "config/mappings.v1.json")
+        path = os.getenv("AWS_CONFIG_PATH", "config/mappings.v2.json")
         if not key or not secret or not region or not bucket or not path:
             raise EnvironmentError("Complete AWS connect info not found")
         session = botocore.session.get_session()
@@ -80,14 +81,18 @@ class MapContext:
         )
 
     @classmethod
-    def load_config_from_json(cls, form_data: List[Dict[str, Any]]):
-        contexts = {}
-        for d in form_data:
-            if lookup_env(d.get("env")) is env():
-                del d["env"]  # env is not part of the form data
-                contexts[d["name"]] = cls.MapData(**d)
-        if not (contexts.get("person") and contexts.get("donation")):
-            raise ValueError(f"Contexts must include 'person' and 'donation'")
+    def load_config_from_json_data(cls, data: Dict[str, Dict[str, Any]]):
+        at_keys: Dict[str, Any] = data["at_keys"]
+        an_maps: Dict[str, Any] = data["an_maps"]
+        if set(at_keys.keys()) != set(an_maps.keys()):
+            raise ValueError(f"Keys in 'at_keys' and 'an_maps' don't match: {data}")
+        contexts: Dict[str, cls.MapData] = {}
+        for name, env_list in at_keys.items():
+            for key_dict in env_list:
+                if env().name in key_dict["environments"]:
+                    contexts[name] = replace(cls.MapData(name), **key_dict)
+        for name, map_dict in an_maps.items():
+            contexts[name] = replace(contexts[name], **map_dict)
         cls.known_maps = contexts
         prinl(f"Loaded {len(contexts)} contexts in {env().name} environment.")
 
@@ -98,22 +103,51 @@ class MapContext:
         response = client.get_object(Bucket=bucket, Key=key)
         if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
             raise RuntimeError(f"Failure to download configuration: {response}")
-        form_data = json.load(response["Body"])
-        response["Body"].close()
-        cls.load_config_from_json(form_data)
+        try:
+            form_data = json.load(response["Body"])
+        finally:
+            response["Body"].close()
+        cls.load_config_from_json_data(form_data)
 
     @classmethod
     def load_config_locally(cls, config_path: str):
         prinl(f"Loading config from '{config_path}'...")
         with open(config_path, "r", encoding="utf-8") as fp:
             form_data = json.load(fp)
-        cls.load_config_from_json(form_data)
+        cls.load_config_from_json_data(form_data)
+
+    @classmethod
+    def save_config_to_json_data(cls) -> Dict[str:Dict]:
+        at_keys, an_maps = {}, {}
+        for key, vals in cls.known_maps.items():
+            at_keys[key] = dict(
+                environments=vals.environments,
+                at_account_key=vals.at_account_key,
+                at_database_key=vals.at_database_key,
+                at_table_name=vals.at_table_name,
+                at_typecast=vals.at_typecast,
+            )
+            an_maps[key] = dict(
+                an_headers=vals.an_headers,
+                an_core_field_map=vals.an_core_field_map,
+                an_forms=vals.an_forms,
+                an_custom_field_prefixes=vals.an_custom_field_prefixes,
+                an_custom_field_map=vals.an_custom_field_map,
+            )
+        return {"at_keys": at_keys, "an_maps": an_maps}
+
+    @classmethod
+    def save_config_locally(cls, config_path: str):
+        prinl(f"Saving config to '{config_path}'...")
+        with open(config_path, "w", encoding="utf-8") as fp:
+            json.dump(cls.save_config_to_json_data(), fp, indent=2)
+            fp.write("\n")
+        prinl(f"Config saved.")
 
     @classmethod
     def put_config_to_aws(cls):
-        content = [asdict(form_data) for form_data in cls.known_maps.values()]
-        if not content:
-            raise ValueError("Saving an empty config not allowed")
+        prinl(f"Saving config to AWS...")
+        content = cls.save_config_to_json_data()
         body = (json.dumps(content, indent=2) + "\n").encode("utf-8")
         client, bucket, key = cls.get_client_and_target()
         response = client.put_object(
@@ -125,6 +159,7 @@ class MapContext:
         )
         if response["ResponseMetadata"]["HTTPStatusCode"] >= 400:
             raise RuntimeError(f"Failed to write config: {response}")
+        prinl(f"Config saved.")
 
     @classmethod
     def get(cls) -> str:

@@ -19,7 +19,7 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Set
 
 import requests
 
@@ -36,7 +36,9 @@ from ..utils import (
 )
 
 
-def fetch_donation_records() -> Tuple[Dict[str, ATRecord], Dict[str, ATRecord]]:
+def fetch_donation_records() -> Tuple[
+    Dict[str, ATRecord], Dict[str, ATRecord], Dict[str, ATRecord]
+]:
     """
     Get donor and donation records from Airtable,
     making a key-record map of the results.
@@ -46,10 +48,12 @@ def fetch_donation_records() -> Tuple[Dict[str, ATRecord], Dict[str, ATRecord]]:
     donor_records = fetch_all_records()
     MC.set("donation")
     donation_records = fetch_all_records()
-    return donor_records, donation_records
+    MC.set("donation page")
+    page_records = fetch_all_records()
+    return donor_records, donation_records, page_records
 
 
-def fetch_donations() -> Dict[str, List[ATRecord]]:
+def fetch_donations() -> Tuple[Dict[str, List[ATRecord]], Set[str]]:
     """
     Find all the donations and their donors,
     constructing a map from donor URL to
@@ -61,6 +65,7 @@ def fetch_donations() -> Dict[str, List[ATRecord]]:
     session.headers = MC.an_headers()
     donations_url = MC.an_base + "/donations"
     donors: Dict[str, List[ATRecord]] = {}
+    page_urls: Set[str] = set()
     donation_count = 0
     # fetch and process each page of donations
     page, total_pages = 1, 1
@@ -70,7 +75,7 @@ def fetch_donations() -> Dict[str, List[ATRecord]]:
         response.raise_for_status()
         response.encoding = "utf-8"
         donations = response.json()
-        item = ANHash.from_parts("donation page", donations)
+        item = ANHash.from_parts("donation list", donations)
         donation_urls = item.get_link_urls("osdi:donations")
         total_pages = item.properties()["total_pages"]
         prinl(
@@ -91,6 +96,7 @@ def fetch_donations() -> Dict[str, List[ATRecord]]:
             if not donation_record:
                 prinl(f"Invalid donation hash, skipping: {donation}")
                 continue
+            # get the donor for this record
             donor_url = item.get_link_url("osdi:person")
             if not donor_url:
                 prinl(f"No donor link, skipping: {donation}")
@@ -100,10 +106,34 @@ def fetch_donations() -> Dict[str, List[ATRecord]]:
                 val.append(donation_record)
             else:
                 donors[donor_url] = [donation_record]
+            # get the donation page for this record
+            page_url = item.get_link_url("osdi:fundraising_page")
+            if page_url:
+                page_urls.add(page_url)
             if (i + 1) % 10 == 0:
                 prinl(f"Processed {i + 1}/{len(donation_urls)}...")
     prinl(f"Created {donation_count} donation records for {len(donors)} donors.")
-    return donors
+    return donors, page_urls
+
+
+def fetch_donation_pages(page_urls: Set[str]) -> Dict[str, ATRecord]:
+    prinl(f"Creating records for {len(page_urls)} donation pages...")
+    MC.set("donation page")
+    session = requests.session()
+    session.headers = MC.an_headers()
+    pages: Dict[str, ATRecord] = {}
+    for i, url in enumerate(page_urls):
+        page_id = url[url.rfind("/") + 1 :]
+        response = session.get(url)
+        response.raise_for_status()
+        response.encoding = "utf-8"
+        page_data = response.json()
+        page_record = ATRecord.from_donation_page(page_id, page_data)
+        pages[page_record.key] = page_record
+        if (i + 1) % 10 == 0:
+            prinl(f"Processed {i+1}/{len(page_urls)}...")
+    prinl(f"Created {len(pages)} donation page records.")
+    return pages
 
 
 def fetch_donors(
@@ -145,14 +175,19 @@ def fetch_donors(
 
 def transfer_all_donations():
     prinl(f"Transferring all donors and donations...")
-    donor_at_map, donation_at_map = fetch_donation_records()
-    donor_url_map = fetch_donations()
+    donor_at_map, donation_at_map, page_at_map = fetch_donation_records()
+    donor_url_map, page_urls = fetch_donations()
+    page_an_map = fetch_donation_pages(page_urls)
     donor_an_map, donation_an_map = fetch_donors(donor_url_map)
     donor_comparison_map = compare_record_maps(donor_at_map, donor_an_map)
     donation_comparison_map = compare_record_maps(donation_at_map, donation_an_map)
+    page_comparison_map = compare_record_maps(page_at_map, page_an_map)
     MC.set("person")
     make_record_updates(donor_comparison_map)
     prinl(f"Finished processing donors.")
     MC.set("donation")
     make_record_updates(donation_comparison_map)
     prinl(f"Finished processing donations.")
+    MC.set("donation page")
+    make_record_updates(page_comparison_map)
+    prinl(f"Finished processing donation pages")

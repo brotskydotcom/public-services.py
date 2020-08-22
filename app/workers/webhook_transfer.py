@@ -101,8 +101,29 @@ async def transfer_donation(item: ANHash):
     an_record = ATRecord.from_donation(item)
     if not an_record:
         raise ValueError(f"Invalid donation info")
-    an_record.core_fields["Email"] = [await transfer_person(item)]
+    email = await transfer_person(item)
+    await transfer_donation_page(item)
     MC.set("donation")
+    an_record.core_fields["Email"] = [email]
+    insert_or_update_record(an_record)
+
+
+async def transfer_donation_page(item: ANHash):
+    """Transfer the donation page to Airtable."""
+    MC.set("donation page")
+    url = item.get_link_url("osdi:fundraising_page")
+    if not url:
+        raise ValueError("No fundraising page link")
+    async with aiohttp.ClientSession(headers=MC.an_headers()) as s:
+        async with s.get(url) as r:
+            if r.status == 200:
+                page_data = await r.json(encoding="utf-8")
+            else:
+                raise ValueError(f"Donation page lookup failed: status {r.status}")
+    page_id = url[url.rfind("/") + 1 :]
+    an_record = ATRecord.from_donation_page(page_id, page_data)
+    if not an_record:
+        raise ValueError("Invalid donation page info")
     insert_or_update_record(an_record)
 
 
@@ -125,7 +146,7 @@ async def transfer_person(item: ANHash) -> str:
     return an_record.key
 
 
-async def transfer_shift(item: Dict[str, str]) -> str:
+async def transfer_shift(item: Dict[str, str]):
     """Transfer the shift to Airtable"""
     MC.set("person")
     attendee_record = ATRecord.from_mobilize_person(item)
@@ -148,6 +169,7 @@ async def process_all_item_lists() -> Tuple[int, int]:
             count += 1
             fail_key = await process_item_list(list_key)
             if fail_key:
+                retry_count += 1
                 await Store.add_retry_list(fail_key)
             await Store.remove_processed_list(list_key)
     except redis.Error:

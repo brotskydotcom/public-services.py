@@ -218,6 +218,26 @@ class ATRecord:
         )
 
     @classmethod
+    def from_donation_page(cls, page_id, data: Dict[str, Any]) -> ATRecord:
+        core_fields = {
+            "page_id": page_id,
+            "Timestamp (EST)": cls.convert_to_est(data["modified_date"]),
+        }
+        custom_fields = {}
+        for field in [
+            "name",
+            "title",
+            "browser_url",
+            "total_donations",
+            "total_amount",
+        ]:
+            target_name = MC.target_custom_field(field)
+            target_data = data.get(field)
+            if target_name and target_data:
+                custom_fields[target_name] = target_data
+        return cls._from_fields(key="page_id", core=core_fields, custom=custom_fields)
+
+    @classmethod
     def from_mobilize(cls, data: Dict[str, str]) -> ATRecord:
         if event_id := data.get("event id"):
             if timeslot_id := data.get("timeslot id"):
@@ -320,7 +340,8 @@ def insert_or_update_record(an_record: ATRecord, insert_only: bool = False):
         at.insert(an_record.all_fields(), typecast=at_typecast)
     elif insert_only:
         prinl(
-            f"Found existing {record_type} record for {an_record.key}, not updating record."
+            f"Found existing {record_type} record for {an_record.key}; "
+            f"per specified option not updating record."
         )
     else:
         prinl(f"Found existing {record_type} record for {an_record.key}.")
