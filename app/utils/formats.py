@@ -119,9 +119,7 @@ class ATRecord:
     def _from_fields(cls, key: str, core: Dict, custom: Dict) -> ATRecord:
         time_str = core["Timestamp (EST)"]
         time = parse(time_str, tzinfos={"EST": cls.est})
-        return cls(
-            key=core[key], mod_date=time, core_fields=core, custom_fields=custom,
-        )
+        return cls(key=core[key], mod_date=time, core_fields=core, custom_fields=custom)
 
     @classmethod
     def from_record(cls, record_data: Dict) -> Optional[ATRecord]:
@@ -139,7 +137,7 @@ class ATRecord:
             if (value := custom_fields.get(at_name)) is not None:
                 core_fields[an_name] = value
                 del custom_fields[at_name]
-        result = cls._from_fields(key=key, core=core_fields, custom=custom_fields,)
+        result = cls._from_fields(key=key, core=core_fields, custom=custom_fields)
         result.record_id = record_data["id"]
         return result
 
