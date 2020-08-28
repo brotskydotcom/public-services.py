@@ -68,6 +68,14 @@ async def transfer_csv(
         df = df.astype(str)
         data = df.values.tolist()
         headings = df.columns.values.tolist()
+        # fix #45: check that the spreadsheet has critical columns:
+        for field in ("email", "signup created time", "signup updated time"):
+            if field not in headings:
+                message = f"Not a Mobilize shift spreadsheet: missing field '{field}'"
+                prinl(f"Rejecting CSV file '{file.filename}': {message}")
+                return templates.TemplateResponse(
+                    "upload_error.html", {"request": request, "msg": message}
+                )
         list_key = f"{env().name}:{Timestamp()}:0"
         items = [pickle.dumps(("shift", dict(zip(headings, row)))) for row in data]
         try:
