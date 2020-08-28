@@ -10,4 +10,4 @@ jobs:
       - uses: actions/setup-python@v2
         with:
           python-version: 3.8
-      - uses: psf/black@fcf97961061982656a1384ecc1628e217a52a88c
+      - uses: psf/black@235412635e91950c8ef2d9ebe777f97fffd4f01d
