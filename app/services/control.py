@@ -19,6 +19,8 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
+from enum import Enum
+from typing import Optional
 
 from fastapi import APIRouter
 from pydantic.main import BaseModel
@@ -30,9 +32,15 @@ from ..utils import prinl, log_error
 control = APIRouter()
 
 
+class DeferralAction(str, Enum):
+    reprocess = "reprocess"
+    discard = "discard"
+
+
 class DeferralResponse(BaseModel):
     deferred_count: int = 0
     restarted_count: int = 0
+    discarded_count: int = 0
 
 
 class DatabaseErrorResponse(BaseModel):
@@ -54,16 +62,15 @@ def database_error(context: str) -> JSONResponse:
             "description": "Database error during processing",
         }
     },
-    summary="Report the count of deferred items lists. "
-    "If reprocess=true, resubmit the lists for processing.",
+    summary="Manage deferred items lists.",
 )
-async def deferrals(reprocess: bool = False):
+async def deferrals(action: Optional[DeferralAction] = None):
     """
     Report the count of deferred item lists, and restart their
-    processing if requested.
+    processing or discard them if requested.
     """
     try:
-        if reprocess:
+        if action == DeferralAction.reprocess:
             count = 0
             while key := await Store.select_for_undeferral():
                 count += 1
@@ -71,6 +78,14 @@ async def deferrals(reprocess: bool = False):
                 await Store.remove_deferred_list(key)
             prinl(f"Restarted {count} deferred item lists.")
             return DeferralResponse(restarted_count=count)
+        elif action == DeferralAction.discard:
+            count = 0
+            while key := await Store.select_for_undeferral():
+                count += 1
+                await Store.remove_deferred_list(key)
+                await redis.db.delete(key)
+            prinl(f"Discarded {count} deferred item lists.")
+            return DeferralResponse(discarded_count=count)
         else:
             count = await Store.get_deferred_count()
             prinl(f"There are {count} deferred item lists.")
