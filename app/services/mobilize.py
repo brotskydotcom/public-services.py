@@ -22,17 +22,16 @@
 
 import asyncio
 import pickle
-import pandas as pd
 
-from typing import Dict
+import pandas as pd
 from fastapi import APIRouter
-from fastapi import FastAPI, File, UploadFile, Request
+from fastapi import File, UploadFile, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
-from ..utils import prinl, log_error, MapContext, env, Timestamp
 from ..db import redis, ItemListStore as Store
+from ..utils import prinl, log_error, env, Timestamp
 from ..workers import process_all_item_lists
 
 mobilize = APIRouter()
@@ -44,10 +43,19 @@ def database_error(context: str) -> JSONResponse:
     return JSONResponse(status_code=502, content={"detail": message})
 
 
-@mobilize.post("/transfercsv", response_class=HTMLResponse)
+@mobilize.post(
+    "/transfercsv",
+    response_class=HTMLResponse,
+    summary="Post a CSV file of shifts to process.",
+)
 async def transfer_csv(
     request: Request, file: UploadFile = File(...), force_transfer: bool = False
 ):
+    """
+    Given a CSV file of shift information from Mobilize,
+    validate that it's got the expected headers and then
+    create a transfer item for each row in the CSV.
+    """
     if file.filename.endswith(".csv"):
         try:
             df = pd.read_csv(file.file, na_filter=False)
@@ -68,7 +76,7 @@ async def transfer_csv(
         except redis.Error:
             message = log_error("Database error while saving received items")
             return templates.TemplateResponse(
-                "upload_error.html", {"request": request, "msg": message,},
+                "upload_error.html", {"request": request, "msg": message}
             )
         prinl(f"Accepted {len(items)} item(s) from Mobilize CSV.")
         if force_transfer:
