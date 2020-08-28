@@ -138,6 +138,8 @@ class ItemListStore:
         Remove a processed item list from the set.
         """
         result = await cls.db.zrem(cls.set_key, key)
+        # fix #47: since we're done with the list, delete it
+        await cls.db.delete(key)
         return result
 
     @classmethod
@@ -152,7 +154,7 @@ class ItemListStore:
     @classmethod
     async def remove_deferred_list(cls, key: str) -> Any:
         """
-        Remove a processed item list from the set.
+        Remove an item list from the deferred list.
         """
         result = await cls.db.lrem(cls.circle_key, 1, key)
         return result
