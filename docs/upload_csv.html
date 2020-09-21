@@ -1,12 +1,33 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="en">
 <head>
-    <title>Upload Mobilize CSV File</title>
+    <title>Upload Mobilize Exports</title>
 </head>
 <body>
-    <form method="post" action="/mobilize/transfercsv" enctype="multipart/form-data">
-        <input type="file" id="file_upload" name="file">
-        <button type="submit">upload</button>
+    <h1>Upload CSV files exported from Mobilize</h1>
+    <p>This page is for uploading CSV files exported from Mobilize.</p>
+    <h2>Events Upload</h2>
+    <p>First, select the spreadsheet whose name contains <code>events</code>,
+        then hit the upload button.
+    </p>
+    <form method="post"
+          action="/mobilize/transfer-event-csv"
+          enctype="multipart/form-data">
+        <input type="file" id="event_upload" name="file" style="width: 25em;">
+        <button type="submit">Upload</button>
+    </form>
+    <h2>Shifts Upload</h2>
+    <p>Next, select the spreadsheet whose name contains <code>shifts</code>,
+       then hit the upload button.
+    </p>
+    <p><strong>NOTE:</strong> You <em>must</em> upload the event spreadsheet
+        before you upload the shift spreadsheet.
+    </p>
+    <form method="post"
+          action="/mobilize/transfer-shift-csv"
+          enctype="multipart/form-data">
+        <input type="file" id="shift_upload" name="file" style="width: 25em;">
+        <button type="submit">Upload</button>
     </form>
 </body>
 </html>

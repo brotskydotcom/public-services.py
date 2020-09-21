@@ -21,7 +21,7 @@
 #  SOFTWARE.
 import asyncio
 import pickle
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Any
 
 import aiohttp
 
@@ -34,6 +34,7 @@ from ..utils import (
     MapContext as MC,
     ATRecord,
     ANHash,
+    lookup_email,
     insert_or_update_record,
 )
 
@@ -44,8 +45,9 @@ async def process_item_list(key: str) -> Optional[str]:
     If there are temporary failures with some of the items on the list,
     we make a list of the items that failed, and return it.
     """
-    prinl(f"Processing webhook items on list '{key}'...")
-    success_count, fail_count = 0, 0
+    item_count = await redis.db.llen(key)
+    prinl(f"Processing {item_count} webhook item(s) on list '{key}'...")
+    count, good_count, bad_count = 0, 0, 0
     environ, ident, rc = key.split(":")
     if int(rc) < 5:
         retry_key = f"{environ}:{ident}:{int(rc) + 1}"
@@ -53,40 +55,48 @@ async def process_item_list(key: str) -> Optional[str]:
     else:
         retry_key = f"{environ}:{ident}:0"
         retry = False
+    event_cache: Dict[str, Any] = {}
     while item_data := await redis.db.lpop(key):
+        count += 1
         form_name, body = pickle.loads(item_data)
+        prinl(f"Item #{count}/{item_count} has type '{form_name}'.")
         try:
-            if form_name == "shift":
-                prinl(f"Found shift item.")
+            if form_name == "event":
+                # Mobilize event export
+                await transfer_event(body, event_cache)
+            elif form_name == "shift":
+                # Mobilize shift export
                 await transfer_shift(body)
             else:
+                # It's an Action Network webhook
                 item = ANHash.from_parts(form_name, body)
                 if form_name == "donation":
-                    prinl(f"Found donation item.")
+                    # AN donation record
                     await transfer_donation(item)
-                elif form_name == "upload":
-                    prinl(f"Found upload item.")
                 else:
-                    prinl(f"Found {form_name} submission item.")
+                    # either an AN person upload or an AN web form submission,
+                    # both just give us a new contact to transfer.
                     await transfer_person(item)
-            success_count += 1
+            good_count += 1
             if env() is Environment.DEV:
                 logging_key = redis.get_key("Successfully processed")
                 await redis.db.rpush(logging_key, item_data)
         except ValueError as e:
             msg = e.args[0] if e.args else "Invalid data"
-            log_error(f"{msg}, ignoring item: {body}")
-            success_count += 1
+            log_error(f"{msg}, ignoring item #{count}: {body}")
+            good_count += 1
         except:
-            log_error(f"Temporary error, will retry later")
-            fail_count += 1
+            log_error(f"Temporary error on item #{count}, will retry later")
+            bad_count += 1
             await redis.db.rpush(retry_key, item_data)
             if env() is Environment.DEV:
                 logging_key = redis.get_key("Failed to process")
                 await redis.db.rpush(logging_key, item_data)
-    prinl(f"Successfully processed {success_count} item(s) on list '{key}'.")
-    if fail_count > 0:
-        prinl(f"Failed to process {fail_count} item(s) on list '{key}'.")
+    prinl(
+        f"Successfully processed {good_count} of {item_count} item(s) on list '{key}'."
+    )
+    if bad_count > 0:
+        prinl(f"Failed to process {bad_count} of {item_count} item(s) on list '{key}'.")
         if retry:
             prinl(f"Saving failed item(s) for retry on list '{retry_key}'.")
             return retry_key
@@ -146,17 +156,37 @@ async def transfer_person(item: ANHash) -> str:
     return an_record.key
 
 
+async def transfer_event(item: Dict[str, str], cache: Dict[str, Any]):
+    """Transfer the event to Airtable"""
+    MC.set("event")
+    event_record = ATRecord.from_mobilize_event(item)
+    if not event_record:
+        raise ValueError("Invalid event info")
+    email = event_record.core_fields["email"]
+    if (link := cache.get(email)) is not None:
+        event_record.core_fields["email"] = link
+    elif lookup_email(email):
+        cache[email] = [email]
+        event_record.core_fields["email"] = [email]
+    else:
+        cache[email] = ""
+        event_record.core_fields["email"] = ""
+    insert_or_update_record(event_record)
+
+
 async def transfer_shift(item: Dict[str, str]):
     """Transfer the shift to Airtable"""
+    MC.set("shift")
+    shift_record = ATRecord.from_mobilize_shift(item)
+    if not shift_record:
+        raise ValueError("Invalid shift info")
     MC.set("person")
     attendee_record = ATRecord.from_mobilize_person(item)
     if item.get("utm_source"):
         insert_or_update_record(attendee_record)
     else:
         insert_or_update_record(attendee_record, insert_only=True)
-
     MC.set("shift")
-    shift_record = ATRecord.from_mobilize(item)
     shift_record.core_fields["email"] = [attendee_record.key]
     insert_or_update_record(shift_record)
 

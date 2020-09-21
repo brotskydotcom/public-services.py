@@ -24,6 +24,7 @@ from .constants import MapContext
 from .formats import (
     ANHash,
     ATRecord,
+    lookup_email,
     insert_or_update_record,
     fetch_all_records,
     compare_record_maps,

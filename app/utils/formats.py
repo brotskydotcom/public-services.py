@@ -236,33 +236,61 @@ class ATRecord:
         return cls._from_fields(key="page_id", core=core_fields, custom=custom_fields)
 
     @classmethod
-    def from_mobilize(cls, data: Dict[str, str]) -> ATRecord:
+    def from_mobilize_event(cls, data: Dict[str, str]) -> Optional[ATRecord]:
+        event_id = data.get("id")
+        if not event_id:
+            prinl(f"Event data has no 'id' field; skipping it: {data}")
+            return None
+        slot_id = data.get("timeslot_id")
+        if slot_id:
+            row_id = f"Event {event_id}-{slot_id}"
+        else:
+            row_id = f"Event {event_id}"
+        updated_at = data.get("updated_at")
+        if not updated_at:
+            return None
+        event_state = data.get("state") or data.get("organization_state")
+        core: Dict[str, str] = {
+            "row_id": row_id,
+            "Timestamp (EST)": cls.convert_to_est(updated_at),
+            "email": data.get("event_owner_email_address"),
+            "event_state": event_state if event_state else "",
+        }
+        custom: Dict[str, str] = {}
+        for name, value in data.items():
+            target_name = MC.target_custom_field(name)
+            if target_name:
+                custom[target_name] = value
+        return cls._from_fields(key="row_id", core=core, custom=custom)
+
+    @classmethod
+    def from_mobilize_shift(cls, data: Dict[str, str]) -> Optional[ATRecord]:
+        email = data["email"]
         if event_id := data.get("event id"):
             if timeslot_id := data.get("timeslot id"):
-                shift_id = f"{data['email']}-{event_id}-{timeslot_id}"
+                shift_id = f"User {email} at Event {event_id}-{timeslot_id}"
+                event_link = [f"Event {event_id}-{timeslot_id}"]
             else:
-                shift_id = f"{data['email']}-{event_id}-{data['signup created time']}"
+                shift_id = f"User {email} at Event {event_id}"
+                event_link = [f"Event {event_id}"]
         else:
-            shift_id = f"{data['email']}-{data['signup created time']}"
-
+            prinl(f"Shift data has no 'event id' field, skipping it: {data}")
+            return None
         for key in ["attended", "rating", "Spanish", "status"]:
             if not data.get(key):
                 data.pop(key, None)
-
         updated_time = data["signup updated time"]
         est_time_str = cls.convert_to_est(updated_time)
-
         core_fields: Dict[str, str] = {
             "shift id": shift_id,
             "Timestamp (EST)": est_time_str,
+            "event": event_link,
         }
-
         custom_fields: Dict[str, Any] = {}
         for name, value in data.items():
             target_name = MC.target_custom_field(name)
             if target_name:
                 custom_fields[target_name] = value
-
         return cls._from_fields(key="shift id", core=core_fields, custom=custom_fields)
 
     @classmethod
@@ -326,6 +354,21 @@ class ATRecord:
         return updates
 
 
+def lookup_email(email: str) -> bool:
+    """Given an email, see if we have a contact with that email"""
+    if not email:
+        return False
+    record_type = MC.get()
+    if record_type != "person":
+        MC.set("person")
+    at_key, at_base, at_table, at_typecast = MC.at_connect_info()
+    at = Airtable(at_base, at_table, api_key=at_key)
+    record_dict = at.match(MC.at_key_field(), email)
+    if record_type != "person":
+        MC.set(record_type)
+    return record_dict is not None
+
+
 def insert_or_update_record(an_record: ATRecord, insert_only: bool = False):
     """Given an AN record for an already-set context, insert or update Airtable"""
     record_type = MC.get()
@@ -334,19 +377,19 @@ def insert_or_update_record(an_record: ATRecord, insert_only: bool = False):
 
     record_dict = at.match(MC.at_key_field(), an_record.key)
     if not record_dict:
-        prinl(f"Uploading new {record_type} record for {an_record.key}.")
+        prinl(f"Uploading new {record_type} record.")
         at.insert(an_record.all_fields(), typecast=at_typecast)
     elif insert_only:
         prinl(
-            f"Found existing {record_type} record for {an_record.key}; "
+            f"Found existing {record_type} record; "
             f"per specified option not updating record."
         )
     else:
-        prinl(f"Found existing {record_type} record for {an_record.key}.")
+        prinl(f"Found existing {record_type} record.")
         if at_record := ATRecord.from_record(record_dict):
             an_record.at_match = at_record
         else:
-            raise ValueError(f"Matching record is not valid")
+            raise ValueError(f"Matching record is not valid: {record_dict}")
         updates = an_record.find_at_field_updates()
         if updates:
             prinl(f"Updating {len(updates)} fields in record.")

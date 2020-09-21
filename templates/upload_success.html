@@ -1,10 +1,21 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="en">
 <head>
-    <title>CSV Upload Success</title>
+    <title>Upload Successful</title>
 </head>
 <body>
-    <p>Accepted {{ num_shifts }} shifts from Mobilize CSV file {{ filename }}</p>
-    <a href="/docs/upload_csv.html">Upload another CSV file</a>
+    <h1>Success!</h1>
+    <p>
+        You have succesfully uploaded {{ number }} {{ type }}
+        from the file {{ filename }}</p>
+    <p>
+        If you want
+        {% if type == "shifts" %}
+        to start over and upload a new event,
+        {% else %}
+        to upload shifts for these events,
+        {% endif %}
+        <a href="/docs/upload_csv.html">click here</a>.
+    </p>
 </body>
 </html>
