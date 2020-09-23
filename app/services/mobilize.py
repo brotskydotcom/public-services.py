@@ -22,6 +22,7 @@
 
 import asyncio
 import pickle
+from typing import List
 
 import pandas as pd
 from fastapi import APIRouter
@@ -44,11 +45,69 @@ def database_error(context: str) -> JSONResponse:
 
 
 @mobilize.post(
-    "/transfercsv",
+    "/transfer-event-csv",
+    response_class=HTMLResponse,
+    summary="Post a CSV file of events to process.",
+)
+async def transfer_event_csv(
+    request: Request, file: UploadFile = File(...), force_transfer: bool = False
+):
+    """
+    Given a CSV file of event information from Mobilize,
+    validate that it's got the expected headers and then
+    create a transfer item for each row in the CSV.
+    """
+    if file.filename.endswith(".csv"):
+        try:
+            df = pd.read_csv(file.file, na_filter=False)
+        except:
+            message = log_error("Error reading csv file")
+            return templates.TemplateResponse(
+                "upload_error.html", {"request": request, "msg": message}
+            )
+        df = df.astype(str)
+        headings = df.columns.values.tolist()
+        # fix #45: check that the spreadsheet has critical columns:
+        for field in ("event_owner_email_address", "event_owner_email_address"):
+            if field not in headings:
+                message = f"Not a Mobilize event spreadsheet: missing field '{field}'"
+                prinl(f"Rejecting CSV file '{file.filename}': {message}")
+                return templates.TemplateResponse(
+                    "upload_error.html", {"request": request, "msg": message}
+                )
+        count = await process_csv_rows(
+            "event", headings, df.values.tolist(), force_transfer
+        )
+        if count < 0:
+            message = log_error("Database error while saving received events")
+            return templates.TemplateResponse(
+                "upload_error.html", {"request": request, "msg": message}
+            )
+        return templates.TemplateResponse(
+            "upload_success.html",
+            {
+                "request": request,
+                "type": "events",
+                "number": count,
+                "filename": file.filename,
+            },
+        )
+    else:
+        return templates.TemplateResponse(
+            "upload_error.html",
+            {
+                "request": request,
+                "msg": f"File {file.filename} should be CSV file type",
+            },
+        )
+
+
+@mobilize.post(
+    "/transfer-shift-csv",
     response_class=HTMLResponse,
     summary="Post a CSV file of shifts to process.",
 )
-async def transfer_csv(
+async def transfer_shift_csv(
     request: Request, file: UploadFile = File(...), force_transfer: bool = False
 ):
     """
@@ -66,7 +125,6 @@ async def transfer_csv(
             )
 
         df = df.astype(str)
-        data = df.values.tolist()
         headings = df.columns.values.tolist()
         # fix #45: check that the spreadsheet has critical columns:
         for field in ("email", "signup created time", "signup updated time"):
@@ -76,23 +134,22 @@ async def transfer_csv(
                 return templates.TemplateResponse(
                     "upload_error.html", {"request": request, "msg": message}
                 )
-        list_key = f"{env().name}:{Timestamp()}:0"
-        items = [pickle.dumps(("shift", dict(zip(headings, row)))) for row in data]
-        try:
-            await redis.db.rpush(list_key, *items)
-            await Store.add_new_list(list_key)
-        except redis.Error:
+        count = await process_csv_rows(
+            "shift", headings, df.values.tolist(), force_transfer
+        )
+        if count < 0:
             message = log_error("Database error while saving received items")
             return templates.TemplateResponse(
                 "upload_error.html", {"request": request, "msg": message}
             )
-        prinl(f"Accepted {len(items)} item(s) from Mobilize CSV.")
-        if force_transfer:
-            prinl(f"Running transfer task over received item(s).")
-            asyncio.create_task(process_all_item_lists())
         return templates.TemplateResponse(
             "upload_success.html",
-            {"request": request, "num_shifts": len(items), "filename": file.filename},
+            {
+                "request": request,
+                "type": "shifts",
+                "number": count,
+                "filename": file.filename,
+            },
         )
     else:
         return templates.TemplateResponse(
@@ -102,3 +159,20 @@ async def transfer_csv(
                 "msg": f"File {file.filename} should be CSV file type",
             },
         )
+
+
+async def process_csv_rows(
+    kind: str, headings: List, data: List[List], force_transfer: bool
+) -> int:
+    list_key = f"{env().name}:{Timestamp()}:0"
+    items = [pickle.dumps((kind, dict(zip(headings, row)))) for row in data]
+    try:
+        await redis.db.rpush(list_key, *items)
+        await Store.add_new_list(list_key)
+    except redis.Error:
+        return -1
+    prinl(f"Accepted {len(items)} item(s) from Mobilize CSV.")
+    if force_transfer:
+        prinl(f"Running transfer task over received item(s).")
+        asyncio.create_task(process_all_item_lists())
+    return len(items)

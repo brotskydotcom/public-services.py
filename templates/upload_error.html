@@ -1,10 +1,19 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="en">
 <head>
-    <title>CSV Upload Error</title>
+    <title>Upload Failure</title>
 </head>
 <body>
-    <p>Error: {{ msg }}</p>
-    <a href="/docs/upload_csv.html">Try Again</a>
+    <h1>Whoops!</h1>
+    <p>
+        Sorry, there was a problem with your upload.
+    </p>
+    <p>
+        <strong>Error:</strong> {{ msg }}
+    </p>
+    <p>
+        If you would to try your upload again,
+        <a href="/docs/upload_csv.html">click here</a>.
+    </p>
 </body>
 </html>
