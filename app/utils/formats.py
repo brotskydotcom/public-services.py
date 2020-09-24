@@ -26,13 +26,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Any, List, Optional, ClassVar
 
-from airtable import Airtable
 from dateutil.parser import parse
 from dateutil.tz import gettz
 from haleasy import HALEasy, LinkNotFoundError
 
 from .constants import MapContext as MC
-from ..utils import prinl
+from ..base import prinl
 
 
 class ANHash(HALEasy):
@@ -352,134 +351,3 @@ class ATRecord:
         if updates or not an_fields:
             self.add_core_fields(updates)
         return updates
-
-
-def lookup_email(email: str) -> bool:
-    """Given an email, see if we have a contact with that email"""
-    if not email:
-        return False
-    record_type = MC.get()
-    if record_type != "person":
-        MC.set("person")
-    at_key, at_base, at_table, at_typecast = MC.at_connect_info()
-    at = Airtable(at_base, at_table, api_key=at_key)
-    record_dict = at.match(MC.at_key_field(), email)
-    if record_type != "person":
-        MC.set(record_type)
-    return record_dict is not None
-
-
-def insert_or_update_record(an_record: ATRecord, insert_only: bool = False):
-    """Given an AN record for an already-set context, insert or update Airtable"""
-    record_type = MC.get()
-    at_key, at_base, at_table, at_typecast = MC.at_connect_info()
-    at = Airtable(at_base, at_table, api_key=at_key)
-
-    record_dict = at.match(MC.at_key_field(), an_record.key)
-    if not record_dict:
-        prinl(f"Uploading new {record_type} record.")
-        at.insert(an_record.all_fields(), typecast=at_typecast)
-    elif insert_only:
-        prinl(
-            f"Found existing {record_type} record; "
-            f"per specified option not updating record."
-        )
-    else:
-        prinl(f"Found existing {record_type} record.")
-        if at_record := ATRecord.from_record(record_dict):
-            an_record.at_match = at_record
-        else:
-            raise ValueError(f"Matching record is not valid: {record_dict}")
-        updates = an_record.find_at_field_updates()
-        if updates:
-            prinl(f"Updating {len(updates)} fields in record.")
-            at.update(at_record.record_id, updates, typecast=at_typecast)
-        else:
-            prinl(f"No fields need update in record.")
-
-
-def fetch_all_records() -> Dict[str, ATRecord]:
-    """
-    Get all records from Airtable, returning a map from key value to record
-
-    If more than one record has a given key, the last one fetched is kept.
-    """
-    record_type = MC.get()
-    prinl(f"Looking for {record_type} records...")
-    at_key, at_base, at_table, _ = MC.at_connect_info()
-    at = Airtable(at_base, at_table, api_key=at_key)
-    results: Dict[str, ATRecord] = {}
-    for record_dict in at.get_all():
-        record = ATRecord.from_record(record_dict)
-        if record:
-            results.update({record.key: record})
-    prinl(f"Found {len(results)} {record_type} record(s).")
-    return results
-
-
-def compare_record_maps(
-    at_map: Dict[str, ATRecord], an_map: Dict[str, ATRecord]
-) -> Dict[str, Dict]:
-    prinl(
-        f"Comparing {len(at_map)} Airtable record(s) "
-        f"with {len(an_map)} Action Network record(s)..."
-    )
-    at_only, an_only, an_newer, matching = {}, dict(an_map), {}, {}
-    for at_k, at_v in at_map.items():
-        an_v = an_map.get(at_k)
-        if an_v:
-            del an_only[at_k]
-            an_v.at_match = at_v  # remember airbase match
-            if an_v.mod_date > at_v.mod_date:
-                an_newer[at_k] = an_v
-            else:
-                matching[at_k] = an_v
-        else:
-            at_only[at_k] = at_v
-    prinl(
-        f"Found {len(an_only)} new, "
-        f"{len(an_newer)} updated, and "
-        f"{len(matching)} matching Action Network records."
-    )
-    if len(at_only) > 0:
-        prinl(f"Found {len(at_only)} Airtable record(s) without a match.")
-    result = {
-        "at_only": at_only,
-        "an_only": an_only,
-        "an_newer": an_newer,
-        "matching": matching,
-    }
-    return result
-
-
-def make_record_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
-    """Update Airtable from newer Action Network records"""
-    record_type = MC.get()
-    at_key, at_base, at_table, at_typecast = MC.at_connect_info()
-    at = Airtable(at_base, at_table, api_key=at_key)
-    an_only = comparison_map["an_only"]
-    did_update = False
-    if an_only:
-        did_update = True
-        prinl(f"Doing updates for {record_type} records...")
-        prinl(f"Uploading {len(an_only)} new record(s)...")
-        records = [r.all_fields() for r in an_only.values()]
-        at.batch_insert(records, typecast=at_typecast)
-    an_newer: Dict[str, ATRecord] = comparison_map["an_newer"]
-    if an_newer:
-        update_map: Dict[str, Dict[str, Any]] = {}
-        for key, record in an_newer.items():
-            updates = record.find_at_field_updates()
-            if updates:
-                update_map[record.at_match.record_id] = updates
-        if update_map:
-            if not did_update:
-                prinl(f"Doing updates for {record_type} records...")
-            did_update = True
-            prinl(f"Updating {len(update_map)} existing record(s)...")
-            for i, (record_id, updates) in enumerate(update_map.items()):
-                at.update(record_id, updates, typecast=at_typecast)
-                if (i + 1) % 10 == 0:
-                    prinl(f"Processed {i+1}/{len(update_map)}...")
-    if not did_update:
-        prinl(f"No updates required for {record_type} records.")

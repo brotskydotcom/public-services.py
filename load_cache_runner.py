@@ -19,42 +19,17 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
+import sys
+import asyncio
 
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from app.workers.load_cache import load_cache
 
-from .an import an
-from .control import control
-from .mobilize import mobilize
-from ..base import env, Environment
-from ..db import ItemListStore, RecordCache
-from ..utils import MapContext
-from ..workers import EmbeddedWorker
+from app.utils import MapContext
 
-if env() in (Environment.DEV, Environment.STAGE):
-    app = FastAPI()
-else:
-    app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
-
-# mounts an "independent" app on the /docs path that handles static files
-app.mount("/docs", StaticFiles(directory="docs"), name="docs")
-# add the sub-APIs
-app.include_router(an, prefix="/action_network", tags=["action_network"])
-app.include_router(control, prefix="/control", tags=["control"])
-app.include_router(mobilize, prefix="/mobilize", tags=["mobilize"])
-
-
-@app.on_event("startup")
-async def startup():
+if __name__ == "__main__":
     MapContext.initialize()
-    await RecordCache.initialize()
-    await ItemListStore.initialize()
-    EmbeddedWorker.start()
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    EmbeddedWorker.stop()
-    await ItemListStore.finalize()
-    await RecordCache.finalize()
+    try:
+        asyncio.run(load_cache(sys.argv[1:]))
+    except KeyboardInterrupt:
+        pass
     MapContext.finalize()

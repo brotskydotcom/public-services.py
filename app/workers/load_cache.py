@@ -19,42 +19,26 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
+from typing import List
 
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-
-from .an import an
-from .control import control
-from .mobilize import mobilize
-from ..base import env, Environment
-from ..db import ItemListStore, RecordCache
-from ..utils import MapContext
-from ..workers import EmbeddedWorker
-
-if env() in (Environment.DEV, Environment.STAGE):
-    app = FastAPI()
-else:
-    app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
-
-# mounts an "independent" app on the /docs path that handles static files
-app.mount("/docs", StaticFiles(directory="docs"), name="docs")
-# add the sub-APIs
-app.include_router(an, prefix="/action_network", tags=["action_network"])
-app.include_router(control, prefix="/control", tags=["control"])
-app.include_router(mobilize, prefix="/mobilize", tags=["mobilize"])
+from ..base import prinl
+from ..db import RecordCache
+from ..utils import MapContext as MC, fetch_all_records
 
 
-@app.on_event("startup")
-async def startup():
-    MapContext.initialize()
+async def load_cache(record_types: List[str]):
+    prinl(f"Loading cache...")
+    if not record_types:
+        record_types = ("person", "event", "shift")
     await RecordCache.initialize()
-    await ItemListStore.initialize()
-    EmbeddedWorker.start()
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    EmbeddedWorker.stop()
-    await ItemListStore.finalize()
-    await RecordCache.finalize()
-    MapContext.finalize()
+    for record_type in record_types:
+        MC.set(record_type)
+        record_map = fetch_all_records()
+        total = len(record_map)
+        prinl(f"Adding {total} {record_type} records to cache...")
+        for count, record in enumerate(record_map.values()):
+            await RecordCache.add_record(record_type, record.key, record.mod_date)
+            if (count + 1) % 10 == 0:
+                prinl(f"Added {count+1}/{total} records...")
+        prinl(f"Finished adding {total} {record_type} records to cache.")
+    prinl(f"Finished loading cache.")
