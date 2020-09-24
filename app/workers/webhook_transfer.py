@@ -21,20 +21,17 @@
 #  SOFTWARE.
 import asyncio
 import pickle
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict
 
 import aiohttp
 
+from ..base import Environment, env, prinl, log_error
 from ..db import redis, ItemListStore as Store
 from ..utils import (
-    Environment,
-    env,
-    prinl,
-    log_error,
     MapContext as MC,
     ATRecord,
     ANHash,
-    lookup_email,
+    lookup_record,
     insert_or_update_record,
 )
 
@@ -55,7 +52,6 @@ async def process_item_list(key: str) -> Optional[str]:
     else:
         retry_key = f"{environ}:{ident}:0"
         retry = False
-    event_cache: Dict[str, Any] = {}
     while item_data := await redis.db.lpop(key):
         count += 1
         form_name, body = pickle.loads(item_data)
@@ -63,7 +59,7 @@ async def process_item_list(key: str) -> Optional[str]:
         try:
             if form_name == "event":
                 # Mobilize event export
-                await transfer_event(body, event_cache)
+                await transfer_event(body)
             elif form_name == "shift":
                 # Mobilize shift export
                 await transfer_shift(body)
@@ -115,7 +111,7 @@ async def transfer_donation(item: ANHash):
     await transfer_donation_page(item)
     MC.set("donation")
     an_record.core_fields["Email"] = [email]
-    insert_or_update_record(an_record)
+    await insert_or_update_record(an_record)
 
 
 async def transfer_donation_page(item: ANHash):
@@ -134,7 +130,7 @@ async def transfer_donation_page(item: ANHash):
     an_record = ATRecord.from_donation_page(page_id, page_data)
     if not an_record:
         raise ValueError("Invalid donation page info")
-    insert_or_update_record(an_record)
+    await insert_or_update_record(an_record)
 
 
 async def transfer_person(item: ANHash) -> str:
@@ -152,26 +148,22 @@ async def transfer_person(item: ANHash) -> str:
     an_record = ATRecord.from_person(submitter)
     if not an_record:
         raise ValueError("Invalid person info")
-    insert_or_update_record(an_record)
+    await insert_or_update_record(an_record)
     return an_record.key
 
 
-async def transfer_event(item: Dict[str, str], cache: Dict[str, Any]):
+async def transfer_event(item: Dict[str, str]):
     """Transfer the event to Airtable"""
     MC.set("event")
     event_record = ATRecord.from_mobilize_event(item)
     if not event_record:
         raise ValueError("Invalid event info")
+    MC.set("person")
     email = event_record.core_fields["email"]
-    if (link := cache.get(email)) is not None:
-        event_record.core_fields["email"] = link
-    elif lookup_email(email):
-        cache[email] = [email]
-        event_record.core_fields["email"] = [email]
-    else:
-        cache[email] = ""
-        event_record.core_fields["email"] = ""
-    insert_or_update_record(event_record)
+    is_contact = await lookup_record(email)
+    MC.set("event")
+    event_record.core_fields["email"] = [email] if is_contact else ""
+    await insert_or_update_record(event_record)
 
 
 async def transfer_shift(item: Dict[str, str]):
@@ -182,13 +174,12 @@ async def transfer_shift(item: Dict[str, str]):
         raise ValueError("Invalid shift info")
     MC.set("person")
     attendee_record = ATRecord.from_mobilize_person(item)
-    if item.get("utm_source"):
-        insert_or_update_record(attendee_record)
-    else:
-        insert_or_update_record(attendee_record, insert_only=True)
+    await insert_or_update_record(
+        attendee_record, insert_only=not item.get("utm_source")
+    )
     MC.set("shift")
     shift_record.core_fields["email"] = [attendee_record.key]
-    insert_or_update_record(shift_record)
+    await insert_or_update_record(shift_record)
 
 
 async def process_all_item_lists() -> Tuple[int, int]:

@@ -27,7 +27,7 @@ from typing import ClassVar, Optional, Any
 from aioredis import Redis, RedisError
 
 from .redis_db import redis
-from ..utils import log_error
+from ..base import log_error
 
 
 class ItemListStore:
@@ -98,7 +98,7 @@ class ItemListStore:
         cls.db = redis.db
 
     @classmethod
-    async def terminate(cls):
+    async def finalize(cls):
         """
         Make sure redis is closed.
         """

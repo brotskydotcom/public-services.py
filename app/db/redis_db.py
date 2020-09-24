@@ -21,7 +21,7 @@
 #  SOFTWARE.
 import os
 
-from ..utils import env, Environment
+from ..base import env, Environment
 
 
 class RedisDatabase:

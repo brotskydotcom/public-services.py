@@ -46,8 +46,9 @@ from random import uniform
 from typing import Optional
 
 from .webhook_transfer import process_all_item_lists
-from ..db import ItemListStore
-from ..utils import MapContext, prinl, log_error, env, Environment
+from ..base import prinl, log_error
+from ..db import ItemListStore, RecordCache
+from ..utils import MapContext
 
 
 async def worker():
@@ -81,6 +82,7 @@ async def app():
     The main worker app, run as the only task in a process.
     """
     MapContext.initialize()
+    await MapContext.initialize()
     await ItemListStore.initialize()
     try:
         prinl(f"Worker started...")
@@ -90,7 +92,9 @@ async def app():
     except:
         prinl(f"Worker failed.")
     finally:
-        await ItemListStore.terminate()
+        await ItemListStore.finalize()
+        await RecordCache.finalize()
+        await MapContext.finalize()
 
 
 class EmbeddedWorker:

@@ -29,7 +29,7 @@ from typing import ClassVar, Dict, Optional, Any, List, Tuple
 import botocore.client
 import botocore.session
 
-from app.utils import env, Environment, prinl
+from app.base import env, Environment, prinl
 
 
 class MapContext:
@@ -119,20 +119,20 @@ class MapContext:
     @classmethod
     def save_config_to_json_data(cls) -> Dict[str:Dict]:
         at_keys, an_maps = {}, {}
-        for key, vals in cls.known_maps.items():
+        for key, value in cls.known_maps.items():
             at_keys[key] = dict(
-                environments=vals.environments,
-                at_account_key=vals.at_account_key,
-                at_database_key=vals.at_database_key,
-                at_table_name=vals.at_table_name,
-                at_typecast=vals.at_typecast,
+                environments=value.environments,
+                at_account_key=value.at_account_key,
+                at_database_key=value.at_database_key,
+                at_table_name=value.at_table_name,
+                at_typecast=value.at_typecast,
             )
             an_maps[key] = dict(
-                an_headers=vals.an_headers,
-                an_core_field_map=vals.an_core_field_map,
-                an_forms=vals.an_forms,
-                an_custom_field_prefixes=vals.an_custom_field_prefixes,
-                an_custom_field_map=vals.an_custom_field_map,
+                an_headers=value.an_headers,
+                an_core_field_map=value.an_core_field_map,
+                an_forms=value.an_forms,
+                an_custom_field_prefixes=value.an_custom_field_prefixes,
+                an_custom_field_map=value.an_custom_field_map,
             )
         return {"at_keys": at_keys, "an_maps": an_maps}
 
@@ -270,3 +270,7 @@ class MapContext:
                 cls.load_config_locally(form_path)
             else:
                 cls.load_config_from_aws()
+
+    @classmethod
+    def finalize(cls):
+        pass
