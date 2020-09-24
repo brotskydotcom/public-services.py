@@ -52,15 +52,15 @@ class ItemListStore:
     a week from now, so they are way further out than delayed items.
     """
 
-    TIMEOUT: ClassVar[float] = 1.0 * 60 * 20
+    TIMEOUT: ClassVar[float] = 1.0 * 60 * 60 * 6
     """
-    If an item list has been in processing for 20 minutes, it's believed
+    If an item list has been in processing for six hours, it's believed
     to have been left over from a prior run.
     """
 
-    RETRY_DELAY: ClassVar[float] = 1.0 * 60 * 15
+    RETRY_DELAY: ClassVar[float] = 1.0 * 60 * 30
     """
-    Retries of failed item lists are delayed 15 minutes to let
+    Retries of failed item lists are delayed 30 minutes to let
     the upstream systems recover from whatever their issue was. 
     """
 

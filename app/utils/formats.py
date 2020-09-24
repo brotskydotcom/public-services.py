@@ -268,10 +268,10 @@ class ATRecord:
         if event_id := data.get("event id"):
             if timeslot_id := data.get("timeslot id"):
                 shift_id = f"User {email} at Event {event_id}-{timeslot_id}"
-                event_link = [f"Event {event_id}-{timeslot_id}"]
+                event_id = f"Event {event_id}-{timeslot_id}"
             else:
                 shift_id = f"User {email} at Event {event_id}"
-                event_link = [f"Event {event_id}"]
+                event_id = f"Event {event_id}"
         else:
             prinl(f"Shift data has no 'event id' field, skipping it: {data}")
             return None
@@ -283,7 +283,7 @@ class ATRecord:
         core_fields: Dict[str, str] = {
             "shift id": shift_id,
             "Timestamp (EST)": est_time_str,
-            "event": event_link,
+            "event": event_id,
         }
         custom_fields: Dict[str, Any] = {}
         for name, value in data.items():
