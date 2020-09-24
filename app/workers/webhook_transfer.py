@@ -82,7 +82,7 @@ async def process_item_list(key: str) -> Optional[str]:
             log_error(f"{msg}, ignoring item #{count}: {body}")
             good_count += 1
         except:
-            log_error(f"Temporary error on item #{count}, will retry later")
+            log_error(f"Temporary error on {form_name} item #{count}, will retry later")
             bad_count += 1
             await redis.db.rpush(retry_key, item_data)
             if env() is Environment.DEV:
@@ -172,6 +172,11 @@ async def transfer_shift(item: Dict[str, str]):
     shift_record = ATRecord.from_mobilize_shift(item)
     if not shift_record:
         raise ValueError("Invalid shift info")
+    MC.set("event")
+    event_id = shift_record.core_fields["event"]
+    if event_id and not await lookup_record(event_id):
+        prinl(f"No event found for shift, delaying processing: {item}")
+        raise KeyError(f"No event found for shift")
     MC.set("person")
     attendee_record = ATRecord.from_mobilize_person(item)
     await insert_or_update_record(
