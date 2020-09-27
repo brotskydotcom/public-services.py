@@ -145,22 +145,34 @@ class ATRecord:
         for name in sub_data.keys():
             if name != "custom_fields":
                 cls.an_core_fields[name] = cls.an_core_fields.get(name, 0) + 1
-        emails = sub_data["email_addresses"]
+        emails: List[Dict] = sub_data["email_addresses"]
         email = next((a for a in emails if a.get("primary")), emails[0])
-        addresses = sub_data["postal_addresses"]
-        address = next((a for a in addresses if a.get("primary")), addresses[0])
-        street = address.get("address_lines", [""])[0]
+        addresses: List[Dict] = sub_data["postal_addresses"]
+        address = next((a for a in addresses if a.get("primary")), {})
         first, last = sub_data.get("given_name", ""), sub_data.get("family_name", "")
+        mobile_number, mobile_opt_in, landline_number = "", False, ""
+        phones: List[Dict] = sub_data["phone_numbers"]
+        phone = next((p for p in phones if p.get("primary")), {})
+        if number := phone.get("number"):
+            if phone.get("number_type") == "Mobile":
+                mobile_number = number
+                if phone.get("status") == "subscribed":
+                    mobile_opt_in = True
+            else:
+                landline_number = number
         an_core_fields = {
             "Email": email["address"],
             "First name": first,
             "Last name": last,
             "Full name": f"{first} {last}",
-            "Address": street,
+            "Address": address.get("address_lines", [""])[0],
             "City": address.get("locality", ""),
             "State": address.get("region", ""),
             "Zip Code": address.get("postal_code", ""),
             "Timestamp (EST)": cls.convert_to_est(sub_data["modified_date"]),
+            "Landline Number": landline_number,
+            "Mobile Number": mobile_number,
+            "Mobile Opt-In": mobile_opt_in,
         }
         core_fields: Dict[str, str] = {}
         core_field_map = MC.core_field_map()
@@ -330,15 +342,15 @@ class ATRecord:
         core_fields = {
             core_field_map[k]: v
             for k, v in self.core_fields.items()
-            if core_field_map.get(k)
+            if v and core_field_map.get(k)
         }
         return {**core_fields, **self.custom_fields}
 
-    def find_at_field_updates(self) -> Dict[str, Any]:
+    def find_at_field_updates(self, assume_newer: bool = False) -> Dict[str, Any]:
         """Find fields that are newer on the Action Network side"""
         if not self.at_match:
             raise ValueError("Can't find updates without a matching record")
-        if self.mod_date <= self.at_match.mod_date:
+        if not assume_newer and self.mod_date <= self.at_match.mod_date:
             # never update except from a strictly newer AN record
             return {}
         an_fields = self.custom_fields

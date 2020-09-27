@@ -129,7 +129,9 @@ def fetch_all_records() -> Dict[str, ATRecord]:
 
 
 def compare_record_maps(
-    at_map: Dict[str, ATRecord], an_map: Dict[str, ATRecord]
+    at_map: Dict[str, ATRecord],
+    an_map: Dict[str, ATRecord],
+    assume_newer: bool = False,
 ) -> Dict[str, Dict]:
     prinl(
         f"Comparing {len(at_map)} Airtable record(s) "
@@ -141,7 +143,7 @@ def compare_record_maps(
         if an_v:
             del an_only[at_k]
             an_v.at_match = at_v  # remember airbase match
-            if an_v.mod_date > at_v.mod_date:
+            if assume_newer or an_v.mod_date > at_v.mod_date:
                 an_newer[at_k] = an_v
             else:
                 matching[at_k] = an_v
@@ -163,7 +165,9 @@ def compare_record_maps(
     return result
 
 
-def make_record_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
+def make_record_updates(
+    comparison_map: Dict[str, Dict[str, ATRecord]], assume_newer: bool = False
+):
     """Update Airtable from newer Action Network records"""
     record_type = MC.get()
     at_key, at_base, at_table, at_typecast = MC.at_connect_info()
@@ -180,7 +184,7 @@ def make_record_updates(comparison_map: Dict[str, Dict[str, ATRecord]]):
     if an_newer:
         update_map: Dict[str, Dict[str, Any]] = {}
         for key, record in an_newer.items():
-            updates = record.find_at_field_updates()
+            updates = record.find_at_field_updates(assume_newer=assume_newer)
             if updates:
                 update_map[record.at_match.record_id] = updates
         if update_map:

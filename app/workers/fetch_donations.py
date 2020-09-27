@@ -23,10 +23,8 @@ from typing import Dict, List, Tuple, Set
 
 import requests
 
+from ..base import prinl, Environment, env
 from ..utils import (
-    prinl,
-    env,
-    Environment,
     MapContext as MC,
     ATRecord,
     ANHash,

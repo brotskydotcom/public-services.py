@@ -23,10 +23,8 @@ from typing import Dict, List, Set, Sequence
 
 import requests
 
+from ..base import prinl, Environment, env
 from ..utils import (
-    prinl,
-    Environment,
-    env,
     MapContext as MC,
     ATRecord,
     ANHash,
@@ -136,7 +134,7 @@ def fetch_people(people_urls: Sequence[str]) -> Dict[str, ATRecord]:
     return people
 
 
-def transfer_people(form_names: List[str] = None):
+def transfer_people(form_names: List[str], assume_newer=False):
     prinl(f"Transferring people...")
     MC.set("person")
     record_map = fetch_all_records()
@@ -147,6 +145,6 @@ def transfer_people(form_names: List[str] = None):
     else:
         urls = fetch_all_people_urls()
     people_map = fetch_people(urls)
-    comparison_map = compare_record_maps(record_map, people_map)
-    make_record_updates(comparison_map)
+    comparison_map = compare_record_maps(record_map, people_map, assume_newer)
+    make_record_updates(comparison_map, assume_newer)
     prinl(f"Finished transferring people.")
