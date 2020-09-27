@@ -26,7 +26,10 @@ from app.workers.fetch_people import transfer_people
 
 if __name__ == "__main__":
     MapContext.initialize()
-    if len(sys.argv) > 1:
-        transfer_people(sys.argv[1:])
-    else:
-        transfer_people()
+    assume_newer = False
+    args = sys.argv[1:]
+    if "--add-fields" in args:
+        assume_newer = True
+        args.remove("--add-fields")
+        assume_newer = True
+    transfer_people(args, assume_newer)
