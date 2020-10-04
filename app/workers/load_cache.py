@@ -38,7 +38,8 @@ async def load_cache(record_types: List[str]):
         prinl(f"Adding {total} {record_type} records to cache...")
         batch = RecordBatch(record_type) if record_type in ["event", "shift"] else None
         for count, record in enumerate(record_map.values()):
-            await batch.add_record(record.key)
+            if batch:
+                await batch.add_record(record.key)
             await RecordCache.add_record(
                 record_type, record.key, record.mod_date, record.record_id
             )
