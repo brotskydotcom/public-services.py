@@ -31,6 +31,7 @@ from ..utils import (
     MapContext as MC,
     ATRecord,
     ANHash,
+    RecordBatch,
     lookup_record,
     insert_or_update_record,
 )
@@ -42,16 +43,17 @@ async def process_item_list(key: str) -> Optional[str]:
     If there are temporary failures with some of the items on the list,
     we make a list of the items that failed, and return it.
     """
+    env_name, item_type, ident, rc = key.split(":")
     item_count = await redis.db.llen(key)
-    prinl(f"Processing {item_count} webhook item(s) on list '{key}'...")
+    prinl(f"Processing {item_count} {item_type} item(s) on list '{key}'...")
     count, good_count, bad_count = 0, 0, 0
-    environ, ident, rc = key.split(":")
     if int(rc) < 5:
-        retry_key = f"{environ}:{ident}:{int(rc) + 1}"
+        retry_key = f"{env_name}:{item_type}:{ident}:{int(rc) + 1}"
         retry = True
     else:
-        retry_key = f"{environ}:{ident}:0"
+        retry_key = f"{env_name}:{item_type}:{ident}:0"
         retry = False
+    batch = RecordBatch(item_type) if item_type in ["event", "shift"] else None
     while item_data := await redis.db.lpop(key):
         count += 1
         form_name, body = pickle.loads(item_data)
@@ -59,10 +61,10 @@ async def process_item_list(key: str) -> Optional[str]:
         try:
             if form_name == "event":
                 # Mobilize event export
-                await transfer_event(body)
+                await transfer_event(body, batch)
             elif form_name == "shift":
                 # Mobilize shift export
-                await transfer_shift(body)
+                await transfer_shift(body, batch)
             else:
                 # It's an Action Network webhook
                 item = ANHash.from_parts(form_name, body)
@@ -88,6 +90,8 @@ async def process_item_list(key: str) -> Optional[str]:
             if env() is Environment.DEV:
                 logging_key = redis.get_key("Failed to process")
                 await redis.db.rpush(logging_key, item_data)
+    if batch:
+        await batch.delete_unused_records()
     prinl(
         f"Successfully processed {good_count} of {item_count} item(s) on list '{key}'."
     )
@@ -152,7 +156,7 @@ async def transfer_person(item: ANHash) -> str:
     return an_record.key
 
 
-async def transfer_event(item: Dict[str, str]):
+async def transfer_event(item: Dict[str, str], batch: RecordBatch):
     """Transfer the event to Airtable"""
     MC.set("event")
     event_record = ATRecord.from_mobilize_event(item)
@@ -163,10 +167,11 @@ async def transfer_event(item: Dict[str, str]):
     is_contact = await lookup_record(email)
     MC.set("event")
     event_record.core_fields["email"] = [email] if is_contact else ""
+    await batch.add_record(event_record.key)
     await insert_or_update_record(event_record)
 
 
-async def transfer_shift(item: Dict[str, str]):
+async def transfer_shift(item: Dict[str, str], batch: RecordBatch):
     """Transfer the shift to Airtable"""
     MC.set("shift")
     shift_record = ATRecord.from_mobilize_shift(item)
@@ -174,9 +179,9 @@ async def transfer_shift(item: Dict[str, str]):
         raise ValueError("Invalid shift info")
     MC.set("event")
     event_id = shift_record.core_fields["event"]
-    if event_id and not await lookup_record(event_id):
-        prinl(f"No event found for shift, delaying processing: {item}")
-        raise KeyError(f"No event found for shift")
+    if not await lookup_record(event_id):
+        prinl(f"No event found for shift, skipping it: {item}")
+        raise ValueError(f"No event found for shift")
     MC.set("person")
     attendee_record = ATRecord.from_mobilize_person(item)
     await insert_or_update_record(
@@ -184,6 +189,7 @@ async def transfer_shift(item: Dict[str, str]):
     )
     MC.set("shift")
     shift_record.core_fields["email"] = [attendee_record.key]
+    await batch.add_record(shift_record.key)
     await insert_or_update_record(shift_record)
 
 

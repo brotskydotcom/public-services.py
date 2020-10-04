@@ -23,7 +23,7 @@ from typing import List
 
 from ..base import prinl
 from ..db import RecordCache
-from ..utils import MapContext as MC, fetch_all_records
+from ..utils import MapContext as MC, RecordBatch, fetch_all_records
 
 
 async def load_cache(record_types: List[str]):
@@ -36,9 +36,16 @@ async def load_cache(record_types: List[str]):
         record_map = fetch_all_records()
         total = len(record_map)
         prinl(f"Adding {total} {record_type} records to cache...")
+        batch = RecordBatch(record_type) if record_type in ["event", "shift"] else None
         for count, record in enumerate(record_map.values()):
-            await RecordCache.add_record(record_type, record.key, record.mod_date)
+            await batch.add_record(record.key)
+            await RecordCache.add_record(
+                record_type, record.key, record.mod_date, record.record_id
+            )
             if (count + 1) % 10 == 0:
                 prinl(f"Added {count+1}/{total} records...")
         prinl(f"Finished adding {total} {record_type} records to cache.")
+        if batch:
+            await batch.mark_unused_records_as_missing()
+    await RecordCache.finalize()
     prinl(f"Finished loading cache.")

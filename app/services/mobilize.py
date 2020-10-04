@@ -164,7 +164,7 @@ async def transfer_shift_csv(
 async def process_csv_rows(
     kind: str, headings: List, data: List[List], force_transfer: bool
 ) -> int:
-    list_key = f"{env().name}:{Timestamp()}:0"
+    list_key = f"{env().name}:{kind}:{Timestamp()}:0"
     items = [pickle.dumps((kind, dict(zip(headings, row)))) for row in data]
     try:
         await redis.db.rpush(list_key, *items)

@@ -80,7 +80,7 @@ async def receive_notification(body: List[Dict], force_transfer: bool = False):
     items = ANHash.find_items(data=body)
     if items:
         values = [pickle.dumps((item.form_name, item.body)) for item in items]
-        list_key = f"{env().name}:{Timestamp()}:0"
+        list_key = f"{env().name}:webhook:{Timestamp()}:0"
         try:
             await redis.db.rpush(list_key, *values)
             await Store.add_new_list(list_key)
@@ -91,37 +91,3 @@ async def receive_notification(body: List[Dict], force_transfer: bool = False):
         prinl(f"Running transfer task over received item(s).")
         asyncio.create_task(process_all_item_lists())
     return WebHookResponse(accepted=len(items))
-
-
-@an.get(
-    "/submissions",
-    status_code=200,
-    response_model=List[Submission],
-    responses={
-        502: {
-            "model": DatabaseErrorResponse,
-            "description": "Database error during processing",
-        }
-    },
-    summary="Fetch items from prior posted webhooks",
-)
-async def get_pending_items():
-    """
-    Return all the notified items that haven't yet been processed.
-    """
-    ani_key: str = redis.get_key("Submitted Items")
-    if env() is Environment.PROD:
-        raise HTTPException(403, detail="Access to production data is not allowed")
-    prinl("Retrieving all pending submissions...")
-    results = []
-    try:
-        submissions = await redis.db.lrange(ani_key, 0, -1, encoding="ascii")
-        for submission in submissions:
-            items = await redis.db.lrange(submission, 0, -1)
-            for item in items:
-                form_name, body = pickle.loads(item)
-                results.append(Submission(form_name=form_name, body=body))
-    except redis.Error:
-        return database_error("while retrieving submissions")
-    prinl(f"Returning {len(results)} pending submissions.")
-    return results
