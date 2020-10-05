@@ -19,7 +19,7 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-from typing import Dict, Any
+from typing import Dict, Any, Set, List
 
 from airtable import Airtable
 
@@ -29,18 +29,51 @@ from ..base import prinl
 from ..db import RecordCache
 
 
+class RecordBatch:
+    def __init__(self, record_type: str):
+        self.record_type = record_type
+        self.record_keys: Set[str] = set()
+
+    async def add_record(self, key: str):
+        self.record_keys.add(key)
+
+    async def mark_unused_records_as_missing(self) -> List[str]:
+        to_delete = []
+        for cached in await RecordCache.get_all_records(self.record_type):
+            key, _, record_id = cached
+            if key not in self.record_keys:
+                await RecordCache.mark_missing(self.record_type, key)
+                to_delete.append(record_id)
+        return to_delete
+
+    async def delete_unused_records(self):
+        prinl(f"Looking for deleted Mobilize {self.record_type}s.")
+        to_delete = await self.mark_unused_records_as_missing()
+        if to_delete:
+            prinl(
+                f"Found {len(to_delete)} deleted {self.record_type}(s); "
+                f"deleting matching records from Airtable."
+            )
+            MC.set(self.record_type)
+            at_key, at_base, at_table, at_typecast = MC.at_connect_info()
+            at = Airtable(at_base, at_table, api_key=at_key)
+            at.batch_delete(to_delete)
+        else:
+            prinl(f"Found no deleted Mobilize {self.record_type}s.")
+
+
 async def lookup_record(key: str) -> bool:
     """
     Lookup a record with the given key, first checking the cache
     and then, if it misses, checking in Airtable.  Returns whether
     there is such a record, but not any info about it.
     """
-    if key == "":
+    if not key:
         return False
     record_type = MC.get()
-    is_authoritative, mod_date = await RecordCache.get_record(record_type, key)
+    is_authoritative, record_info = await RecordCache.get_record(record_type, key)
     if is_authoritative:
-        return mod_date is not None
+        return record_info is not None
     # fell through the cache, look for a matching record
     at_key, at_base, at_table, at_typecast = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
@@ -51,7 +84,9 @@ async def lookup_record(key: str) -> bool:
         return False
     prinl(f"Caching discovered Airtable {record_type} record.")
     if at_record := ATRecord.from_record(record_dict):
-        await RecordCache.add_record(record_type, at_record.key, at_record.mod_date)
+        await RecordCache.add_record(
+            record_type, at_record.key, at_record.mod_date, at_record.record_id
+        )
     else:
         raise ValueError(f"Matching record is not valid: {record_dict}")
     return True
@@ -64,21 +99,21 @@ async def insert_or_update_record(an_record: ATRecord, insert_only: bool = False
     depending on the flag parameters.
     """
     record_type = MC.get()
-    is_authoritative, mod_date = await RecordCache.get_record(
+    is_authoritative, record_info = await RecordCache.get_record(
         record_type, an_record.key
     )
-    if mod_date is not None:
+    if record_info is not None:
         # found a cached record
         prinl(f"Found cached {record_type} record.")
         if insert_only:
             prinl("Per specified option, not updating Airtable record.")
             return
-        if mod_date >= an_record.mod_date:
+        if record_info[0] >= an_record.mod_date:
             prinl(f"Cached record is fresh; no need to update Airtable.")
             return
     at_key, at_base, at_table, at_typecast = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
-    if is_authoritative and mod_date is None:
+    if is_authoritative and record_info is None:
         # no Airtable record
         record_dict = None
     else:
@@ -86,15 +121,19 @@ async def insert_or_update_record(an_record: ATRecord, insert_only: bool = False
         record_dict = at.match(MC.at_key_field(), an_record.key)
     if not record_dict:
         prinl(f"Uploading new {record_type} record; adding it to cache.")
-        at.insert(an_record.all_fields(), typecast=at_typecast)
-        await RecordCache.add_record(record_type, an_record.key, an_record.mod_date)
+        record_dict = at.insert(an_record.all_fields(), typecast=at_typecast)
+        await RecordCache.add_record(
+            record_type, an_record.key, an_record.mod_date, record_dict["id"]
+        )
         return
     prinl(f"Retrieved matching Airtable {record_type} record.")
     if at_record := ATRecord.from_record(record_dict):
         an_record.at_match = at_record
         if not is_authoritative:
             prinl(f"Adding retrieved Airtable record to cache.")
-            await RecordCache.add_record(record_type, at_record.key, at_record.mod_date)
+            await RecordCache.add_record(
+                record_type, at_record.key, at_record.mod_date, at_record.record_id
+            )
     else:
         raise ValueError(f"Matching record is not valid: {record_dict}")
     if insert_only:
@@ -105,7 +144,9 @@ async def insert_or_update_record(an_record: ATRecord, insert_only: bool = False
             prinl(f"Updating {len(updates)} fields in record.")
             at.update(at_record.record_id, updates, typecast=at_typecast)
             prinl("Updating cached record.")
-            await RecordCache.add_record(record_type, an_record.key, at_record.mod_date)
+            await RecordCache.add_record(
+                record_type, an_record.key, an_record.mod_date, at_record.record_id
+            )
         else:
             prinl(f"No fields need update in record.")
 
