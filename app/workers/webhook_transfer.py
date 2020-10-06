@@ -91,7 +91,10 @@ async def process_item_list(key: str) -> Optional[str]:
                 logging_key = redis.get_key("Failed to process")
                 await redis.db.rpush(logging_key, item_data)
     if batch:
-        await batch.delete_unused_records()
+        try:
+            await batch.delete_unused_records()
+        except:
+            log_error(f"Error deleting unused records, cache has been cleared")
     prinl(
         f"Successfully processed {good_count} of {item_count} item(s) on list '{key}'."
     )
