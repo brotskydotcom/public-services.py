@@ -21,11 +21,12 @@
 #  SOFTWARE.
 import pickle
 from datetime import datetime
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, Dict
 
 from aioredis import Redis
 
 from .redis_db import redis
+from ..base import prinl
 
 
 class RecordCache:
@@ -119,22 +120,39 @@ class RecordCache:
         or it's a tuple of the mod_date and key of the Airtable record.
         """
         if not key:
-            return False, None
-        key = await cls._get_key(record_type, key)
-        value = await cls.db.get(key)
+            raise ValueError(f"Key field ({key}) must not be empty.")
+        record_key = await cls._get_key(record_type, key)
+        value = await cls.db.get(record_key)
         if not value:
             return False, None
         value = pickle.loads(value)
         return True, value
 
     @classmethod
-    async def get_all_records(cls, record_type: str) -> List[Tuple[str, datetime, str]]:
+    async def get_all_records(
+        cls, record_type: str
+    ) -> Dict[str, Optional[Tuple[datetime, str]]]:
         type_name = cls.TYPE_FORMAT.format(record_type=record_type)
         type_key = redis.get_key(type_name)
-        result: List[Tuple[str, datetime, str]] = []
-        for key in await cls.db.smembers(type_key, encoding="utf-8"):
-            record_key = await cls._get_key(record_type, key)
-            value = pickle.loads(await cls.db.get(record_key))
-            if value:
-                result.append((key, value[0], value[1]))
+        result: Dict[str, Optional[Tuple[datetime, str]]] = {}
+        prinl(f"Fetching all {record_type} record keys from cache...")
+        all_keys = await cls.db.smembers(type_key, encoding="utf-8")
+        total, value_count = len(all_keys), 0
+        batch_size = 500 if total < 1000 else min(total // 5, 1000)
+        prinl(f"Found {len(all_keys)} {record_type} keys; fetching values...")
+        for i in range(0, total, batch_size):
+            key_batch = all_keys[i : i + batch_size]
+            record_key_batch = [
+                await cls._get_key(record_type, key) for key in key_batch
+            ]
+            val_batch = await cls.db.mget(*record_key_batch)
+            for key, value in zip(key_batch, val_batch):
+                if val := pickle.loads(value):
+                    value_count += 1
+                result[key] = val
+            # prinl(f"Fetched {i + len(key_batch)}/{total}...")
+        prinl(
+            f"Found {value_count} existing {record_type} records in cache; "
+            f"{len(all_keys) - value_count} {record_type} keys are marked missing."
+        )
         return result

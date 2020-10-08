@@ -23,30 +23,41 @@ from typing import List
 
 from ..base import prinl
 from ..db import RecordCache
-from ..utils import MapContext as MC, RecordBatch, fetch_all_records
+from ..utils import MapContext as MC, fetch_all_records
 
 
 async def load_cache(record_types: List[str]):
     prinl(f"Loading cache...")
     if not record_types:
-        record_types = ("person", "event", "shift")
+        record_types = ("event", "shift", "person")
     await RecordCache.initialize()
     for record_type in record_types:
         MC.set(record_type)
+        cache_map = await RecordCache.get_all_records(record_type)
         record_map = fetch_all_records()
-        total = len(record_map)
-        prinl(f"Adding {total} {record_type} records to cache...")
-        batch = RecordBatch(record_type) if record_type in ["event", "shift"] else None
-        for count, record in enumerate(record_map.values()):
-            if batch:
-                await batch.add_record(record.key)
-            await RecordCache.add_record(
-                record_type, record.key, record.mod_date, record.record_id
-            )
-            if (count + 1) % 10 == 0:
-                prinl(f"Added {count+1}/{total} records...")
-        prinl(f"Finished adding {total} {record_type} records to cache.")
-        if batch:
-            await batch.mark_unused_records_as_missing()
+        updated_count, total = 0, len(record_map)
+        prinl(f"Loading {total} {record_type} records in cache...")
+        for count, (key, record) in enumerate(record_map.items()):
+            if (
+                not (cache_val := cache_map.get(key))
+                or cache_val[0] != record.mod_date
+                or cache_val[1] != record.record_id
+            ):
+                updated_count += 1
+                await RecordCache.add_record(
+                    record_type, record.key, record.mod_date, record.record_id
+                )
+                if updated_count % 10 == 0:
+                    prinl(f"Updated {updated_count}, {total - (count + 1)} to go...")
+        prinl(f"Updated {updated_count} {record_type} records in the cache.")
+        missing_count, total = 0, len(cache_map)
+        prinl(f"Sweeping {total} cache entries looking for missing records...")
+        for count, (key, val) in enumerate(cache_map.items()):
+            if record_map.get(key) is None and val is not None:
+                missing_count += 1
+                await RecordCache.mark_missing(record_type, key)
+                if missing_count % 10 == 0:
+                    prinl(f"Marked {missing_count}, {total - (count + 1)} to go...")
+        prinl(f"Marked {missing_count} {record_type} records as missing.")
     await RecordCache.finalize()
     prinl(f"Finished loading cache.")
