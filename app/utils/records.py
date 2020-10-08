@@ -19,7 +19,7 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-from typing import Dict, Any, Set, List
+from typing import Dict, Any, Set
 
 from airtable import Airtable
 
@@ -37,18 +37,14 @@ class RecordBatch:
     async def add_record(self, key: str):
         self.record_keys.add(key)
 
-    async def mark_unused_records_as_missing(self) -> List[str]:
-        to_delete = []
-        for cached in await RecordCache.get_all_records(self.record_type):
-            key, _, record_id = cached
-            if key not in self.record_keys:
-                await RecordCache.mark_missing(self.record_type, key)
-                to_delete.append(record_id)
-        return to_delete
-
     async def delete_unused_records(self):
-        prinl(f"Looking for deleted Mobilize {self.record_type}s.")
-        to_delete = await self.mark_unused_records_as_missing()
+        prinl(f"Looking for deleted Mobilize {self.record_type}s...")
+        to_delete = []
+        cache_map = await RecordCache.get_all_records(self.record_type)
+        for key, val in cache_map.items():
+            if key not in self.record_keys and val is not None:
+                await RecordCache.mark_missing(self.record_type, key)
+                to_delete.append(val[1])
         if to_delete:
             prinl(
                 f"Found {len(to_delete)} deleted {self.record_type}(s); "
@@ -113,11 +109,22 @@ async def insert_or_update_record(an_record: ATRecord, insert_only: bool = False
             return
     at_key, at_base, at_table, at_typecast = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
-    if is_authoritative and record_info is None:
-        # no Airtable record
-        record_dict = None
+    if is_authoritative:
+        if record_info is None:
+            # no Airtable record
+            record_dict = None
+        else:
+            # fetch the record so we can update it
+            record_dict = at.get(record_info[1])
+            if not record_dict:
+                prinl(
+                    f"Cached record id for {record_type} with key '{an_record.key} "
+                    f"is '{record_info[1]}, but no record was found!"
+                )
+                await RecordCache.mark_missing(record_type, an_record.key)
+                record_dict = at.match(MC.at_key_field(), an_record.key)
     else:
-        # either it's a cache miss or we need the record to update it
+        # it's a cache miss - try to find the record
         record_dict = at.match(MC.at_key_field(), an_record.key)
     if not record_dict:
         prinl(f"Uploading new {record_type} record; adding it to cache.")
@@ -144,28 +151,45 @@ async def insert_or_update_record(an_record: ATRecord, insert_only: bool = False
             prinl(f"Updating {len(updates)} fields in record.")
             at.update(at_record.record_id, updates, typecast=at_typecast)
             prinl("Updating cached record.")
-            await RecordCache.add_record(
-                record_type, an_record.key, an_record.mod_date, at_record.record_id
-            )
         else:
             prinl(f"No fields need update in record.")
+        # update cache time so we don't have to retrieve the record
+        # from Airtable if we reload the same data from the data source
+        await RecordCache.add_record(
+            record_type, an_record.key, an_record.mod_date, at_record.record_id
+        )
 
 
 def fetch_all_records() -> Dict[str, ATRecord]:
     """
-    Get all records from Airtable, returning a map from key value to record.
-    If more than one record has a given key, the last one fetched is kept.
+    Get all records from Airtable, returning a map from key to record.
+    If multiple records are found for a given key, the preferred record
+    (as determined by the formats module) is kept,
+    and all the non-preferred records are deleted from Airtable.
     """
     record_type = MC.get()
-    prinl(f"Looking for {record_type} records...")
+    prinl(f"Looking for {record_type} records in Airtable...")
     at_key, at_base, at_table, _ = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
+    all_records = at.get_all()
+    prinl(f"Found {len(all_records)} records; looking for duplicates...")
     results: Dict[str, ATRecord] = {}
-    for record_dict in at.get_all():
+    to_delete = []
+    for record_dict in all_records:
         record = ATRecord.from_record(record_dict)
         if record:
-            results.update({record.key: record})
-    prinl(f"Found {len(results)} {record_type} record(s).")
+            if existing := results.get(record.key):
+                if record.is_preferred_to(existing):
+                    results[record.key] = record
+                    to_delete.append(existing.record_id)
+                else:
+                    to_delete.append(record.record_id)
+            else:
+                results[record.key] = record
+    if len(to_delete) > 0:
+        prinl(f"Found {len(to_delete)} duplicates; removing them...")
+        at.batch_delete(to_delete)
+    prinl(f"Found {len(results)} distinct {record_type} record(s).")
     return results
 
 

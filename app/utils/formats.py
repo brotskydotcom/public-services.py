@@ -359,7 +359,29 @@ class ATRecord:
         for an_k, an_v in an_fields.items():
             at_v = at_fields.get(an_k)
             if an_v and an_v != at_v:
+                if an_k.lower().find("time") >= 0:
+                    try:
+                        an_date = parse(an_v)
+                        at_date = parse(at_v)
+                        if an_date == at_date:
+                            continue
+                    except (ValueError, OverflowError):
+                        pass
                 updates[an_k] = an_v
         if updates or not an_fields:
             self.add_core_fields(updates)
         return updates
+
+    def is_preferred_to(self, other_record: ATRecord):
+        record_type = MC.get()
+        preferred_fields = {
+            "event": ("Partner", "Event State*"),
+            "shift": ("email", "Event*"),
+        }
+        for field_name in preferred_fields.get(record_type, ()):
+            if self.custom_fields.get(
+                field_name
+            ) and not other_record.custom_fields.get(field_name):
+                return True
+        is_newer = self.mod_date >= other_record.mod_date
+        return is_newer
