@@ -126,10 +126,10 @@ class ATRecord:
         custom_fields = dict(record_data["fields"])
         core_field_map = MC.core_field_map()
         if not custom_fields.get(core_field_map[key]):
-            prinl(f"Airtable record has no {key} field; skipping it: {record_data}")
+            prinl(f"Airtable {MC.get()} record has no {key} field.")
             return None
         if not custom_fields.get(core_field_map["Timestamp (EST)"]):
-            prinl(f"Airtable record has no Timestamp field; adding it: {record_data}")
+            prinl(f"Airtable {MC.get()} record has no Timestamp field; adding one.")
             custom_fields[core_field_map["Timestamp (EST)"]] = cls.epoch
         core_fields = {}
         for an_name, at_name in core_field_map.items():
@@ -198,7 +198,7 @@ class ATRecord:
         # find the amount
         amount = float(item["amount"])
         if amount == 0:
-            prinl(f"Donation's amount is 0, ignoring it.")
+            prinl(f"Donation's amount is 0.")
             return None
         if (currency := item["currency"]).lower() != "usd":
             prinl(f"Donation {key} currency ({currency}) is unexpected.")
@@ -250,7 +250,7 @@ class ATRecord:
     def from_mobilize_event(cls, data: Dict[str, str]) -> Optional[ATRecord]:
         event_id = data.get("id")
         if not event_id:
-            prinl(f"Event data has no 'id' field; skipping it: {data}")
+            prinl(f"Event data has no 'id' field.")
             return None
         slot_id = data.get("timeslot_id")
         if slot_id:
@@ -259,6 +259,7 @@ class ATRecord:
             row_id = f"Event {event_id}"
         updated_at = data.get("updated_at")
         if not updated_at:
+            prinl(f"Event data has no 'updated_at' field.")
             return None
         event_state = data.get("state") or data.get("organization_state")
         core: Dict[str, str] = {
@@ -285,7 +286,7 @@ class ATRecord:
                 shift_id = f"User {email} at Event {event_id}"
                 event_id = f"Event {event_id}"
         else:
-            prinl(f"Shift data has no 'event id' field, skipping it: {data}")
+            prinl(f"Shift data has no 'event id' field.")
             return None
         for key in ["attended", "rating", "Spanish", "status"]:
             if not data.get(key):
@@ -296,6 +297,7 @@ class ATRecord:
             "shift id": shift_id,
             "Timestamp (EST)": est_time_str,
             "event": event_id,
+            "email": [email],
         }
         custom_fields: Dict[str, Any] = {}
         for name, value in data.items():
@@ -313,13 +315,11 @@ class ATRecord:
             "Full name": data["first name"] + " " + data["last name"],
             "Timestamp (EST)": cls.convert_to_est(data["signup updated time"]),
         }
-
         person_custom_fields = {}
         target_name = MC.target_custom_field("utm_source")
         target_data = data.get("utm_source")
         if target_name and target_data:
             person_custom_fields[target_name] = target_data
-
         return cls._from_fields(
             key="Email", core=person_core_fields, custom=person_custom_fields
         )

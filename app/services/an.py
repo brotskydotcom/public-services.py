@@ -24,14 +24,14 @@ import asyncio
 import pickle
 from typing import Dict, List, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
-from ..base import prinl, log_error, Environment, env, Timestamp
+from ..base import prinl, log_error, env, Timestamp
 from ..db import redis, ItemListStore as Store
 from ..utils import ANHash
-from ..workers import process_all_item_lists
+from ..workers import process_webhook_lists
 
 an = APIRouter()
 
@@ -47,7 +47,7 @@ class WebHookResponse(BaseModel):
     accepted: int
 
 
-class DatabaseErrorResponse(BaseModel):
+class ErrorResponse(BaseModel):
     detail: str
 
 
@@ -56,21 +56,28 @@ def database_error(context: str) -> JSONResponse:
     return JSONResponse(status_code=502, content={"detail": message})
 
 
+def other_error(context: str) -> JSONResponse:
+    message = log_error(f"Unexpected error: {context}")
+    return JSONResponse(status_code=500, content={"detail": message})
+
+
 @an.post(
     "/notification",
     status_code=200,
     response_model=WebHookResponse,
     responses={
+        500: {
+            "model": ErrorResponse,
+            "description": "Unexpected error during processing",
+        },
         502: {
-            "model": DatabaseErrorResponse,
+            "model": ErrorResponse,
             "description": "Database error during processing",
-        }
+        },
     },
-    summary="Receiver for new webhook messages. "
-    "Specify query parameter 'force_transfer' as 'true' "
-    "to create a explicit task to transfer the webhook.",
+    summary="Receiver for Action Network web hook messages.",
 )
-async def receive_notification(body: List[Dict], force_transfer: bool = False):
+async def receive_notification(body: List[Dict]):
     """
     Receive a notification from an Action Network web hook.
 
@@ -80,14 +87,13 @@ async def receive_notification(body: List[Dict], force_transfer: bool = False):
     items = ANHash.find_items(data=body)
     if items:
         values = [pickle.dumps((item.form_name, item.body)) for item in items]
-        list_key = f"{env().name}:webhook:{Timestamp()}:0"
+        list_key = f"{env().name}|{Timestamp()}:0"
         try:
             await redis.db.rpush(list_key, *values)
-            await Store.add_new_list(list_key)
+            await Store.add_new_list("webhook", list_key)
         except redis.Error:
             return database_error(f"while saving received items")
+        except:
+            return other_error(f"while saving received items")
     prinl(f"Accepted {len(items)} item(s) from webhook.")
-    if force_transfer:
-        prinl(f"Running transfer task over received item(s).")
-        asyncio.create_task(process_all_item_lists())
     return WebHookResponse(accepted=len(items))

@@ -52,13 +52,12 @@ class RedisDatabase:
         from aioredis import RedisError, create_redis_pool
 
         self.Error = RedisError
-        max_connections = 5 if env() is Environment.PROD else 2
+        max_connections = 5
         self.db = await create_redis_pool(self.url, maxsize=max_connections)
 
     async def close_async(self):
         if self.db is None:
             return
-
         self.db.close()
         await self.db.wait_closed()
         self.db = None
