@@ -20,11 +20,16 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 import asyncio
+import sys
 
+from app.base import prinl
 from app.workers.main import app
 
 if __name__ == "__main__":
+    item_types = sys.argv[1:]
+    if not item_types:
+        item_types = ["csv", "webhook"]
     try:
-        asyncio.run(app())
+        asyncio.run(app(item_types))
     except KeyboardInterrupt:
         pass

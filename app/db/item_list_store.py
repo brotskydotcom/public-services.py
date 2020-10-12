@@ -71,20 +71,21 @@ class ItemListStore:
     ours whenever we check the time on an item.
     """
 
-    set_key: ClassVar[str] = redis.get_key("Item List Store")
+    set_key_template: ClassVar[str] = "{list_type} Store"
     """
-    The sorted set of items with their next-ready times.
-    """
-
-    circle_key: ClassVar[str] = redis.get_key("Deferred Item Lists")
-    """
-    The circular list of deferred item lists.
+    Key template for a sorted set of typed item lists with their next-ready times.
     """
 
-    item_list_channel_name: ClassVar[str] = redis.get_key("Item List Ready")
+    circle_key_template: ClassVar[str] = "{list_type} Deferrals"
     """
-    Redis pub/sub channel where items that are ready to process
-    are published so workers can pick them up.
+    Key template for a circular list of deferred typed item lists.
+    """
+
+    channel_name_template: ClassVar[str] = "{list_type} Ready"
+    """
+    Redis pub/sub channel where item lists of the given type
+    that are ready to process are published
+    so _workers can pick them up.
     """
 
     db: Optional[Redis]
@@ -106,79 +107,98 @@ class ItemListStore:
         cls.db = None
 
     @classmethod
-    async def add_new_list(cls, key: str) -> Any:
+    def _set_key(cls, list_type: str):
+        return redis.get_key(cls.set_key_template.format(list_type=list_type))
+
+    @classmethod
+    def _circle_key(cls, list_type: str):
+        return redis.get_key(cls.circle_key_template.format(list_type=list_type))
+
+    @classmethod
+    def _channel_name(cls, list_type: str):
+        return redis.get_key(cls.channel_name_template.format(list_type=list_type))
+
+    @classmethod
+    async def add_new_list(cls, list_type: str, key: str) -> Any:
         """
         Add a newly posted item list to the set with no delay.
         Notify the item list channel that it's ready.
         """
-        result = await cls.db.zadd(cls.set_key, score=now(), member=key)
-        cls.db.publish(cls.item_list_channel_name, key)
+        set_key = cls._set_key(list_type)
+        channel_name = cls._channel_name(list_type)
+        result = await cls.db.zadd(set_key, score=now(), member=key)
+        cls.db.publish(channel_name, key)
         return result
 
     @classmethod
-    async def add_retry_list(cls, key: str) -> Any:
+    async def add_retry_list(cls, list_type: str, key: str) -> Any:
         """
         Add a retry list to the set with an appropriate delay.
         Also arrange to notify the item list channel when it's ready.
         """
+        set_key = cls._set_key(list_type)
+        channel_name = cls._channel_name(list_type)
 
         async def notify_later():
             await asyncio.sleep(cls.RETRY_DELAY)
-            cls.db.publish(cls.item_list_channel_name, key)
+            cls.db.publish(channel_name, key)
 
-        result = await cls.db.zadd(
-            cls.set_key, score=now() + cls.RETRY_DELAY, member=key
-        )
+        result = await cls.db.zadd(set_key, score=now() + cls.RETRY_DELAY, member=key)
         asyncio.create_task(notify_later())
         return result
 
     @classmethod
-    async def remove_processed_list(cls, key: str) -> Any:
+    async def remove_processed_list(cls, list_type: str, key: str) -> Any:
         """
         Remove a processed item list from the set.
         """
-        result = await cls.db.zrem(cls.set_key, key)
+        set_key = cls._set_key(list_type)
+        result = await cls.db.zrem(set_key, key)
         # fix #47: since we're done with the list, delete it
         await cls.db.delete(key)
         return result
 
     @classmethod
-    async def add_deferred_list(cls, key: str) -> Any:
+    async def add_deferred_list(cls, list_type: str, key: str) -> Any:
         """
         Add a deferred item list to the list of them.
         This is a circular list that adds on the left.
         """
-        result = await cls.db.lpush(cls.circle_key, key)
+        circle_key = cls._circle_key(list_type)
+        result = await cls.db.lpush(circle_key, key)
         return result
 
     @classmethod
-    async def remove_deferred_list(cls, key: str) -> Any:
+    async def remove_deferred_list(cls, list_type: str, key: str) -> Any:
         """
         Remove an item list from the deferred list.
         """
-        result = await cls.db.lrem(cls.circle_key, 1, key)
+        circle_key = cls._circle_key(list_type)
+        result = await cls.db.lrem(circle_key, 1, key)
         return result
 
     @classmethod
-    async def get_deferred_count(cls) -> int:
+    async def get_deferred_count(cls, list_type: str) -> int:
         """
         Return the count of deferred item lists.
         """
-        result = await cls.db.llen(cls.circle_key)
+        circle_key = cls._circle_key(list_type)
+        result = await cls.db.llen(circle_key)
         return result
 
     @classmethod
-    async def select_for_undeferral(cls) -> Optional[str]:
+    async def select_for_undeferral(cls, list_type: str) -> Optional[str]:
         """
         Find the oldest deferred list and return it.
         The returned list is made the most recently deferred.
         Returns None if there are no more deferred lists.
         """
-        result = await cls.db.rpoplpush(cls.circle_key, cls.circle_key)
+        circle_key = cls._circle_key(list_type)
+        result = await cls.db.rpoplpush(circle_key, circle_key)
         return result
 
     @classmethod
-    async def select_from_channel(cls) -> Optional[str]:
+    async def select_from_channel(cls, list_type: str) -> Optional[str]:
         """
         Wait until there's an item sent to the channel, then return it.
 
@@ -187,21 +207,22 @@ class ItemListStore:
         for the subscription.  That way we can be a subscriber while
         other tasks are also being publishers.
         """
+        channel_name = cls._channel_name(list_type)
         try:
-            channels = await cls.db.subscribe(cls.item_list_channel_name)
+            channels = await cls.db.subscribe(channel_name)
             key = await channels[0].get(encoding="utf-8")
-            await cls.db.unsubscribe(cls.item_list_channel_name)
+            await cls.db.unsubscribe(channel_name)
             return key
         except RedisError:
-            log_error("Pub/Sub failed")
-            return None
-        except asyncio.CancelledError:
+            # typically this error means that the process is shutting down
+            # by closing connections.  There's no way to recover from it,
+            # so we exit silently rather than report the error.
             return None
 
     @classmethod
-    async def select_for_processing(cls) -> Optional[str]:
+    async def select_for_processing(cls, list_type: str) -> Optional[str]:
         """
-        Find the first item list that's ready for processing,
+        Find the first item list of the given type that's ready for processing,
         mark it as in-process, and return it.  The select
         prioritizes any older item lists that were left from a prior run
         over item lists that haven't been processed before.
@@ -209,6 +230,7 @@ class ItemListStore:
         Returns:
             The item list key, if one is ready for processing, None otherwise.
         """
+        set_key = cls._set_key(list_type)
 
         async def mark_for_processing(key: str) -> bool:
             """
@@ -217,22 +239,22 @@ class ItemListStore:
             """
             new_score = now() + cls.IN_PROCESS
             pipe = cls.db.multi_exec()
-            pipe.zadd(cls.set_key, score=new_score, member=key)
+            pipe.zadd(set_key, score=new_score, member=key)
             # return the exceptions rather than raising them because of
             # this issue: https://github.com/aio-libs/aioredis/issues/558
             values = await pipe.execute(return_exceptions=True)
             return values[0] == 0
 
         # because we are using optimistic locking, keep trying if we
-        # fail due to interference from other workers.
+        # fail due to interference from other _workers.
         while True:
             try:
                 start = now()
                 # optimistically lock the item set
-                await cls.db.watch(cls.set_key)
+                await cls.db.watch(set_key)
                 # first look for abandoned item lists from a prior run
                 item_lists = await cls.db.zrangebyscore(
-                    cls.set_key,
+                    set_key,
                     min=start + (cls.RETRY_DELAY + cls.CLOCK_DRIFT),
                     max=start + cls.IN_PROCESS - (cls.TIMEOUT + cls.CLOCK_DRIFT),
                     offset=0,
@@ -242,7 +264,7 @@ class ItemListStore:
                 if not item_lists:
                     # next look for the first item list that's ready now
                     item_lists = await cls.db.zrangebyscore(
-                        cls.set_key,
+                        set_key,
                         max=start + cls.CLOCK_DRIFT,
                         offset=0,
                         count=1,
@@ -257,7 +279,7 @@ class ItemListStore:
                     return item_list
                 # if marking fails, it's due to a conflict failure,
                 # so loop and try again after taking a beat
-                await asyncio.sleep(uniform(0.1, 2.0))
+                await asyncio.sleep(uniform(0.1, 0.8))
             finally:
                 # we may have been interrupted and already
                 # closed down the connection, so make sure

@@ -22,8 +22,6 @@
 from .constants import MapContext
 from .formats import ANHash, ATRecord
 from .records import (
-    RecordBatch,
-    lookup_record,
     insert_or_update_record,
     fetch_all_records,
     compare_record_maps,

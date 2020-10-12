@@ -19,9 +19,8 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-import asyncio
 import pickle
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple
 
 import aiohttp
 
@@ -31,70 +30,54 @@ from ..utils import (
     MapContext as MC,
     ATRecord,
     ANHash,
-    RecordBatch,
-    lookup_record,
     insert_or_update_record,
 )
 
 
-async def process_item_list(key: str) -> Optional[str]:
+async def process_webhook_list(key: str) -> Optional[str]:
     """
-    Process the items in the list with the given `key`.
+    Process the items in the webhook list with the given `key`.
     If there are temporary failures with some of the items on the list,
     we make a list of the items that failed, and return it.
     """
-    env_name, item_type, ident, rc = key.split(":")
+    prefix, rc = key.split(":")
     item_count = await redis.db.llen(key)
-    prinl(f"Processing {item_count} {item_type} item(s) on list '{key}'...")
+    if item_count == 0:
+        return
+    prinl(f"Processing {item_count} webhook item(s) on list '{key}'...")
     count, good_count, bad_count = 0, 0, 0
     if int(rc) < 5:
-        retry_key = f"{env_name}:{item_type}:{ident}:{int(rc) + 1}"
+        retry_key = f"{prefix}:{int(rc) + 1}"
         retry = True
     else:
-        retry_key = f"{env_name}:{item_type}:{ident}:0"
+        retry_key = f"{prefix}:0"
         retry = False
-    batch = RecordBatch(item_type) if item_type in ["event", "shift"] else None
     while item_data := await redis.db.lpop(key):
         count += 1
         form_name, body = pickle.loads(item_data)
         prinl(f"Item #{count}/{item_count} has type '{form_name}'.")
         try:
-            if form_name == "event":
-                # Mobilize event export
-                await transfer_event(body, batch)
-            elif form_name == "shift":
-                # Mobilize shift export
-                await transfer_shift(body, batch)
+            item = ANHash.from_parts(form_name, body)
+            if form_name == "donation":
+                # AN donation record
+                await transfer_donation(item)
             else:
-                # It's an Action Network webhook
-                item = ANHash.from_parts(form_name, body)
-                if form_name == "donation":
-                    # AN donation record
-                    await transfer_donation(item)
-                else:
-                    # either an AN person upload or an AN web form submission,
-                    # both just give us a new contact to transfer.
-                    await transfer_person(item)
+                # either an AN person upload or an AN web form submission,
+                # both just give us a new contact to transfer.
+                await transfer_person(item)
             good_count += 1
             if env() is Environment.DEV:
                 logging_key = redis.get_key("Successfully processed")
                 await redis.db.rpush(logging_key, item_data)
         except ValueError as e:
             msg = e.args[0] if e.args else "Invalid data"
-            log_error(f"{msg}, ignoring item #{count}: {body}")
+            debug_id = item.get_link_url("self") or hash(body)
+            prinl(f"{msg}, ignoring item #{count}: {debug_id}")
             good_count += 1
         except:
-            log_error(f"Temporary error on {form_name} item #{count}, will retry later")
+            log_error(f"Error on {form_name} item #{count}, will retry later")
             bad_count += 1
             await redis.db.rpush(retry_key, item_data)
-            if env() is Environment.DEV:
-                logging_key = redis.get_key("Failed to process")
-                await redis.db.rpush(logging_key, item_data)
-    if batch:
-        try:
-            await batch.delete_unused_records()
-        except:
-            log_error(f"Error deleting unused records, cache has been cleared")
     prinl(
         f"Successfully processed {good_count} of {item_count} item(s) on list '{key}'."
     )
@@ -105,7 +88,7 @@ async def process_item_list(key: str) -> Optional[str]:
             return retry_key
         else:
             prinl(f"Deferring failed item(s) for later on list '{retry_key}'.")
-            await Store.add_deferred_list(retry_key)
+            await Store.add_deferred_list("webhook", retry_key)
     return None
 
 
@@ -159,60 +142,21 @@ async def transfer_person(item: ANHash) -> str:
     return an_record.key
 
 
-async def transfer_event(item: Dict[str, str], batch: RecordBatch):
-    """Transfer the event to Airtable"""
-    MC.set("event")
-    event_record = ATRecord.from_mobilize_event(item)
-    if not event_record:
-        raise ValueError("Invalid event info")
-    MC.set("person")
-    email = event_record.core_fields["email"]
-    is_contact = await lookup_record(email)
-    MC.set("event")
-    event_record.core_fields["email"] = [email] if is_contact else ""
-    await batch.add_record(event_record.key)
-    await insert_or_update_record(event_record)
-
-
-async def transfer_shift(item: Dict[str, str], batch: RecordBatch):
-    """Transfer the shift to Airtable"""
-    MC.set("shift")
-    shift_record = ATRecord.from_mobilize_shift(item)
-    if not shift_record:
-        raise ValueError("Invalid shift info")
-    MC.set("event")
-    event_id = shift_record.core_fields["event"]
-    if not await lookup_record(event_id):
-        prinl(f"No event found for shift, skipping it: {item}")
-        raise ValueError(f"No event found for shift")
-    MC.set("person")
-    attendee_record = ATRecord.from_mobilize_person(item)
-    await insert_or_update_record(
-        attendee_record, insert_only=not item.get("utm_source")
-    )
-    MC.set("shift")
-    shift_record.core_fields["email"] = [attendee_record.key]
-    await batch.add_record(shift_record.key)
-    await insert_or_update_record(shift_record)
-
-
-async def process_all_item_lists() -> Tuple[int, int]:
-    prinl(f"Processing ready item lists...")
+async def process_webhook_lists() -> Tuple[int, int]:
+    prinl(f"Processing ready webhook item lists...")
     count, retry_count = 0, 0
     try:
-        while list_key := await Store.select_for_processing():
+        while list_key := await Store.select_for_processing("webhook"):
             count += 1
-            fail_key = await process_item_list(list_key)
+            fail_key = await process_webhook_list(list_key)
             if fail_key:
                 retry_count += 1
-                await Store.add_retry_list(fail_key)
-            await Store.remove_processed_list(list_key)
+                await Store.add_retry_list("webhook", fail_key)
+            await Store.remove_processed_list("webhook", list_key)
     except redis.Error:
-        log_error(f"Database failure")
-    except asyncio.CancelledError:
-        pass
+        log_error(f"Database failure during webhook processing")
     except:
-        log_error(f"Unexpected failure")
+        log_error(f"Unexpected exception during webhook processing")
     finally:
         prinl(f"Processed {count} item list(s); got {retry_count} retry list(s).")
     return count, retry_count

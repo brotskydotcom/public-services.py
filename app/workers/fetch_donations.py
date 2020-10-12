@@ -92,7 +92,7 @@ def fetch_donations() -> Tuple[Dict[str, List[ATRecord]], Set[str]]:
             item = ANHash.from_parts("donation", donation)
             donation_record = ATRecord.from_donation(item)
             if not donation_record:
-                prinl(f"Invalid donation hash, skipping: {donation}")
+                prinl(f"Invalid donation info, skipping it.")
                 continue
             # get the donor for this record
             donor_url = item.get_link_url("osdi:person")

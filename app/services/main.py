@@ -27,9 +27,9 @@ from .an import an
 from .control import control
 from .mobilize import mobilize
 from ..base import env, Environment
-from ..db import ItemListStore, RecordCache
+from ..db import ItemListStore
 from ..utils import MapContext
-from ..workers import EmbeddedWorker
+from ..workers import EmbeddedWorkers
 
 if env() in (Environment.DEV, Environment.STAGE):
     app = FastAPI()
@@ -47,14 +47,12 @@ app.include_router(mobilize, prefix="/mobilize", tags=["mobilize"])
 @app.on_event("startup")
 async def startup():
     MapContext.initialize()
-    await RecordCache.initialize()
     await ItemListStore.initialize()
-    EmbeddedWorker.start()
+    await EmbeddedWorkers.start()
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    EmbeddedWorker.stop()
+    await EmbeddedWorkers.stop()
     await ItemListStore.finalize()
-    await RecordCache.finalize()
     MapContext.finalize()
