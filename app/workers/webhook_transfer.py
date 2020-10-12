@@ -96,7 +96,7 @@ async def transfer_donation(item: ANHash):
     """Transfer the donation to Airtable"""
     an_record = ATRecord.from_donation(item)
     if not an_record:
-        raise ValueError(f"Invalid donation info")
+        raise ValueError(f"Donation amount is 0")
     email = await transfer_person(item)
     await transfer_donation_page(item)
     MC.set("donation")

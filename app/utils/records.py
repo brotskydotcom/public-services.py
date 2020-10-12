@@ -158,7 +158,7 @@ def make_record_updates(
             prinl(f"Updating {len(update_map)} existing record(s)...")
             for i, (record_id, updates) in enumerate(update_map.items()):
                 at.update(record_id, updates, typecast=at_typecast)
-                if (i + 1) % 10 == 0:
+                if (i + 1) % 25 == 0:
                     prinl(f"Processed {i+1}/{len(update_map)}...")
     if not did_update:
         prinl(f"No updates required for {record_type} records.")

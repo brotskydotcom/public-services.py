@@ -122,14 +122,15 @@ class ATRecord:
 
     @classmethod
     def from_record(cls, record_data: Dict) -> Optional[ATRecord]:
+        record_id = record_data["id"]
         key = MC.an_key_field()
         custom_fields = dict(record_data["fields"])
         core_field_map = MC.core_field_map()
         if not custom_fields.get(core_field_map[key]):
-            prinl(f"Airtable {MC.get()} record has no {key} field.")
+            prinl(f"Airtable {MC.get()} record {record_id} has no {key} field.")
             return None
         if not custom_fields.get(core_field_map["Timestamp (EST)"]):
-            prinl(f"Airtable {MC.get()} record has no Timestamp field; adding one.")
+            prinl(f"Airtable {MC.get()} record {record_id} has no import timestamp.")
             custom_fields[core_field_map["Timestamp (EST)"]] = cls.epoch
         core_fields = {}
         for an_name, at_name in core_field_map.items():
@@ -137,7 +138,7 @@ class ATRecord:
                 core_fields[an_name] = value
                 del custom_fields[at_name]
         result = cls._from_fields(key=key, core=core_fields, custom=custom_fields)
-        result.record_id = record_data["id"]
+        result.record_id = record_id
         return result
 
     @classmethod
@@ -198,7 +199,6 @@ class ATRecord:
         # find the amount
         amount = float(item["amount"])
         if amount == 0:
-            prinl(f"Donation's amount is 0.")
             return None
         if (currency := item["currency"]).lower() != "usd":
             prinl(f"Donation {key} currency ({currency}) is unexpected.")
@@ -286,7 +286,6 @@ class ATRecord:
                 shift_id = f"User {email} at Event {event_id}"
                 event_id = f"Event {event_id}"
         else:
-            prinl(f"Shift data has no 'event id' field.")
             return None
         for key in ["attended", "rating", "Spanish", "status"]:
             if not data.get(key):
