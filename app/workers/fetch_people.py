@@ -126,7 +126,7 @@ def fetch_people(people_urls: Sequence[str]) -> Dict[str, ATRecord]:
         submitter_data = response.json()
         record = ATRecord.from_person(submitter_data)
         people[record.key] = record
-        if (i + 1) % 10 == 0:
+        if (i + 1) % 25 == 0:
             prinl(f"Processed {i+1}/{len(people_urls)}...")
     prinl(f"Created {len(people)} records for people.")
     if env() is Environment.DEV:

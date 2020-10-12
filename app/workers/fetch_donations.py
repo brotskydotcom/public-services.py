@@ -92,7 +92,7 @@ def fetch_donations() -> Tuple[Dict[str, List[ATRecord]], Set[str]]:
             item = ANHash.from_parts("donation", donation)
             donation_record = ATRecord.from_donation(item)
             if not donation_record:
-                prinl(f"Invalid donation info, skipping it.")
+                prinl(f"Donation amount is 0: skipping {link}.")
                 continue
             # get the donor for this record
             donor_url = item.get_link_url("osdi:person")
@@ -128,7 +128,7 @@ def fetch_donation_pages(page_urls: Set[str]) -> Dict[str, ATRecord]:
         page_data = response.json()
         page_record = ATRecord.from_donation_page(page_id, page_data)
         pages[page_record.key] = page_record
-        if (i + 1) % 10 == 0:
+        if (i + 1) % 25 == 0:
             prinl(f"Processed {i+1}/{len(page_urls)}...")
     prinl(f"Created {len(pages)} donation page records.")
     return pages
@@ -162,7 +162,7 @@ def fetch_donors(
             # contain a list of the primary key (Email) of the donor.
             donation_record.core_fields["Email"] = [donor_record.key]
             donations[donation_record.key] = donation_record
-        if (i + 1) % 10 == 0:
+        if (i + 1) % 25 == 0:
             prinl(f"Processed {i+1}/{len(donor_map)}...")
     prinl(f"Created {len(donors)} donor records.")
     if env() is Environment.DEV:

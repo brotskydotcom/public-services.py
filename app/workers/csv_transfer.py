@@ -70,7 +70,7 @@ def transfer_events(headings, rows):
         row_data = dict(zip(headings, row))
         event_record = ATRecord.from_mobilize_event(row_data)
         if not event_record:
-            prinl(f"Invalid event data in row {i+2}; skipping it.")
+            prinl(f"Invalid data: skipping event on row {i+2}.")
             continue
         email = event_record.core_fields["email"]
         if email and airtable_people.get(email) is not None:
@@ -97,11 +97,11 @@ def transfer_shifts(headings, rows):
         MC.set("shift")
         shift_record = ATRecord.from_mobilize_shift(row_data)
         if not shift_record:
-            prinl(f"Invalid shift data in row {i+2}; skipping it.")
+            prinl(f"No event id: skipping shift on row {i+2}.")
             continue
         event_id = shift_record.core_fields["event"]
-        if event_id and airtable_events.get(event_id) is None:
-            prinl(f"Shift event {event_id} not found, skipping it.")
+        if airtable_events.get(event_id) is None:
+            prinl(f"{event_id} not found: skipping shift on row {i+2}.")
             continue
         else:
             shift_record.core_fields["event"] = [event_id]
