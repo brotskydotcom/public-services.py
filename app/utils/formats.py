@@ -276,7 +276,7 @@ class ATRecord:
         return cls._from_fields(key="row_id", core=core, custom=custom)
 
     @classmethod
-    def from_mobilize_shift(cls, data: Dict[str, str]) -> Optional[ATRecord]:
+    def from_mobilize_shift(cls, data: Dict[str, str]) -> ATRecord:
         email = data["email"]
         if event_id := data.get("event id"):
             if timeslot_id := data.get("timeslot id"):
@@ -286,7 +286,8 @@ class ATRecord:
                 shift_id = f"User {email} at Event {event_id}"
                 event_id = f"Event {event_id}"
         else:
-            return None
+            shift_id = f"User {email} at Unknown event"
+            event_id = "<Unknown event>"
         for key in ["attended", "rating", "Spanish", "status"]:
             if not data.get(key):
                 data.pop(key, None)
