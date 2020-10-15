@@ -99,7 +99,7 @@ def compare_record_maps(
 ) -> Dict[str, Dict]:
     prinl(
         f"Comparing {len(at_map)} Airtable record(s) "
-        f"with {len(an_map)} Action Network record(s)..."
+        f"with {len(an_map)} source record(s)..."
     )
     at_only, an_only, an_newer, matching = {}, dict(an_map), {}, {}
     for at_k, at_v in at_map.items():
@@ -116,7 +116,7 @@ def compare_record_maps(
     prinl(
         f"Found {len(an_only)} new, "
         f"{len(an_newer)} updated, and "
-        f"{len(matching)} matching Action Network records."
+        f"{len(matching)} matching source records."
     )
     if len(at_only) > 0:
         prinl(f"Found {len(at_only)} Airtable record(s) without a match.")
@@ -130,9 +130,11 @@ def compare_record_maps(
 
 
 def make_record_updates(
-    comparison_map: Dict[str, Dict[str, ATRecord]], assume_newer: bool = False
+    comparison_map: Dict[str, Dict[str, ATRecord]],
+    assume_newer: bool = False,
+    delete_unmatched: bool = False,
 ):
-    """Update Airtable from newer Action Network records"""
+    """Update Airtable from newer source records"""
     record_type = MC.get()
     at_key, at_base, at_table, at_typecast = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
@@ -162,3 +164,9 @@ def make_record_updates(
                     prinl(f"Processed {i+1}/{len(update_map)}...")
     if not did_update:
         prinl(f"No updates required for {record_type} records.")
+    at_only = comparison_map["at_only"]
+    if at_only and delete_unmatched:
+        count = len(at_only)
+        prinl(f"Deleting {count} unmatched Airtable record(s)...")
+        record_ids = [record.record_id for record in at_only.values()]
+        at.batch_delete(record_ids)

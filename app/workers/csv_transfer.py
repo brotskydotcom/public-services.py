@@ -79,7 +79,7 @@ def transfer_events(headings, rows):
             event_record.core_fields["email"] = ""
         events[event_record.key] = event_record
     event_map = compare_record_maps(airtable_events, events)
-    make_record_updates(event_map)
+    make_record_updates(event_map, delete_unmatched=True)
 
 
 def transfer_shifts(headings, rows):
@@ -96,13 +96,9 @@ def transfer_shifts(headings, rows):
         row_data = dict(zip(headings, row))
         MC.set("shift")
         shift_record = ATRecord.from_mobilize_shift(row_data)
-        if not shift_record:
-            prinl(f"No event id: skipping shift on row {i+2}.")
-            continue
         event_id = shift_record.core_fields["event"]
         if airtable_events.get(event_id) is None:
-            prinl(f"{event_id} not found: skipping shift on row {i+2}.")
-            continue
+            shift_record.core_fields["event"] = ""
         else:
             shift_record.core_fields["event"] = [event_id]
         shifts[shift_record.key] = shift_record
