@@ -257,6 +257,14 @@ class ATRecord:
             row_id = f"Event {event_id}-{slot_id}"
         else:
             row_id = f"Event {event_id}"
+        deleted_at = data.get("deleted_at")
+        if deleted_at:
+            prinl(f"Event {row_id} is a deleted event.")
+            return None
+        timeslot_deleted_at = data.get("timeslot_deleted_at")
+        if timeslot_deleted_at:
+            prinl(f"Timeslot {row_id} is a deleted timeslot.")
+            return None
         updated_at = data.get("updated_at")
         if not updated_at:
             prinl(f"Event data has no 'updated_at' field.")
