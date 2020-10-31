@@ -19,21 +19,28 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-
+import os
 import pickle
 from typing import List
 
 import pandas as pd
 from fastapi import APIRouter
-from fastapi import File, UploadFile, Request
+from fastapi import File, UploadFile, Request, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ..base import prinl, log_error, env, Timestamp
+from ..base import prinl, log_error, env, Environment, Timestamp
 from ..db import redis, ItemListStore as Store
 
 mobilize = APIRouter()
 templates = Jinja2Templates(directory="templates")
+
+if env() == Environment.PROD:
+    event_passwords = os.getenv("EVENT_PASSWORDS", "").split(":")
+    shift_passwords = os.getenv("SHIFT_PASSWORDS", "").split(":")
+else:
+    event_passwords = os.getenv("EVENT_PASSWORDS", "events").split(":")
+    shift_passwords = os.getenv("SHIFT_PASSWORDS", "shifts").split(":")
 
 
 @mobilize.post(
@@ -41,11 +48,18 @@ templates = Jinja2Templates(directory="templates")
     response_class=HTMLResponse,
     summary="Post a CSV file of events to process.",
 )
-async def transfer_event_csv(request: Request, file: UploadFile = File(...)):
+async def transfer_event_csv(
+    request: Request, password: str = Form(":::"), file: UploadFile = File(...)
+):
     """
     Given a CSV file of event information from Mobilize,
     post the file content for processing by a worker.
     """
+    if password not in event_passwords:
+        message = "Incorrect events password"
+        return templates.TemplateResponse(
+            "upload_error.html", {"request": request, "msg": message}
+        )
     return await transfer_csv(request, "event", file)
 
 
@@ -54,11 +68,18 @@ async def transfer_event_csv(request: Request, file: UploadFile = File(...)):
     response_class=HTMLResponse,
     summary="Post a CSV file of shifts to process.",
 )
-async def transfer_shift_csv(request: Request, file: UploadFile = File(...)):
+async def transfer_shift_csv(
+    request: Request, password: str = Form(":::"), file: UploadFile = File(...)
+):
     """
     Given a CSV file of shift information from Mobilize,
     post the file content for processing by a worker.
     """
+    if password not in shift_passwords:
+        message = "Incorrect shifts password"
+        return templates.TemplateResponse(
+            "upload_error.html", {"request": request, "msg": message}
+        )
     return await transfer_csv(request, "shift", file)
 
 
