@@ -169,7 +169,7 @@ def make_record_updates(
         field_name = delete_unmatched_except[0]
         field_val = delete_unmatched_except[1]
         record_ids = [
-            record_id
+            record.record_id
             for record in at_only.values()
             if record.custom_fields.get(field_name) != field_val
         ]
