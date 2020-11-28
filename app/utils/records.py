@@ -19,7 +19,7 @@
 #  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 
 from airtable import Airtable
 
@@ -132,7 +132,7 @@ def compare_record_maps(
 def make_record_updates(
     comparison_map: Dict[str, Dict[str, ATRecord]],
     assume_newer: bool = False,
-    delete_unmatched: bool = False,
+    delete_unmatched_except: Optional[Tuple] = None,
 ):
     """Update Airtable from newer source records"""
     record_type = MC.get()
@@ -165,8 +165,14 @@ def make_record_updates(
     if not did_update:
         prinl(f"No updates required for {record_type} records.")
     at_only = comparison_map["at_only"]
-    if at_only and delete_unmatched:
-        count = len(at_only)
-        prinl(f"Deleting {count} unmatched Airtable record(s)...")
-        record_ids = [record.record_id for record in at_only.values()]
-        at.batch_delete(record_ids)
+    if at_only and delete_unmatched_except:
+        field_name = delete_unmatched_except[0]
+        field_val = delete_unmatched_except[1]
+        record_ids = [
+            record_id
+            for record in at_only.values()
+            if record.custom_fields.get(field_name) != field_val
+        ]
+        if record_ids:
+            prinl(f"Deleting {len(record_ids)} unmatched Airtable record(s)...")
+            at.batch_delete(record_ids)

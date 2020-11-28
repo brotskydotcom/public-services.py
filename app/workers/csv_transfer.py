@@ -20,7 +20,9 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 import asyncio
+import os
 import pickle
+from datetime import datetime, timezone
 from typing import Tuple, Dict
 
 from ..base import prinl, log_error
@@ -66,6 +68,7 @@ def transfer_events(headings, rows):
     airtable_events = fetch_all_records()
     prinl(f"Processing {len(rows)} rows from event export...")
     events: Dict[str, ATRecord] = {}
+    delete_unmatched_records = True
     for i, row in enumerate(rows):
         row_data = dict(zip(headings, row))
         event_record = ATRecord.from_mobilize_event(row_data)
@@ -77,12 +80,20 @@ def transfer_events(headings, rows):
             event_record.core_fields["email"] = [email]
         else:
             event_record.core_fields["email"] = ""
+        if event_record.custom_fields.get("Event Visibility*") == "PERMANENT":
+            delete_unmatched_records = False
         events[event_record.key] = event_record
     event_map = compare_record_maps(airtable_events, events)
-    make_record_updates(event_map, delete_unmatched=True)
+    if delete_unmatched_records:
+        make_record_updates(
+            event_map, delete_unmatched_except=("Event Visibility*", "PERMANENT")
+        )
+    else:
+        make_record_updates(event_map)
 
 
 def transfer_shifts(headings, rows):
+    force_shift_updates = os.getenv("FORCE_SHIFT_UPDATES")
     MC.set("person")
     airtable_people = fetch_all_records(keys_only=True)
     MC.set("event")
@@ -101,6 +112,9 @@ def transfer_shifts(headings, rows):
             shift_record.core_fields["event"] = ""
         else:
             shift_record.core_fields["event"] = [event_id]
+            # to restore broken email links on Airtable side
+            if force_shift_updates:
+                shift_record.mod_date = datetime.now(timezone.utc)
         shifts[shift_record.key] = shift_record
         MC.set("person")
         attendee_record = ATRecord.from_mobilize_person(row_data)
