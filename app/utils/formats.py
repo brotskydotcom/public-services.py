@@ -95,7 +95,6 @@ class ATRecord:
     custom_fields: Dict[str, Any]
     record_id: Optional[str] = ""
     at_match: Optional[ATRecord] = None
-    at_match_ignore: Optional[bool] = False
 
     est: ClassVar = gettz("EST")
     epoch: ClassVar = "1999-01-01 12:00:00 EST"
