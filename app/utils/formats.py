@@ -284,7 +284,12 @@ class ATRecord:
         return cls._from_fields(key="row_id", core=core, custom=custom)
 
     @classmethod
-    def from_mobilize_shift(cls, data: Dict[str, str]) -> ATRecord:
+    def from_mobilize_shift(
+        cls, data: Dict[str, str], earliest: Optional[str] = None
+    ) -> Optional[ATRecord]:
+        if earliest and (shift_time := data.get("end")):
+            if parse(shift_time) < parse(earliest):
+                return None
         email = data["email"]
         if event_id := data.get("event id"):
             if timeslot_id := data.get("timeslot id"):

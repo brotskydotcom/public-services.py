@@ -93,6 +93,7 @@ def transfer_events(headings, rows):
 
 
 def transfer_shifts(headings, rows):
+    min_shift_datetime = os.getenv("MINIMUM_SHIFT_DATETIME")
     force_shift_updates = os.getenv("FORCE_SHIFT_UPDATES")
     MC.set("person")
     airtable_people = fetch_all_records(keys_only=True)
@@ -106,7 +107,9 @@ def transfer_shifts(headings, rows):
     for i, row in enumerate(rows):
         row_data = dict(zip(headings, row))
         MC.set("shift")
-        shift_record = ATRecord.from_mobilize_shift(row_data)
+        shift_record = ATRecord.from_mobilize_shift(row_data, min_shift_datetime)
+        if not shift_record:
+            continue
         event_id = shift_record.core_fields["event"]
         if airtable_events.get(event_id) is None:
             shift_record.core_fields["event"] = ""
