@@ -75,6 +75,15 @@ def prinl(*args, **kwargs):
     print(f"[{os.getpid()}]", *args, flush=True, **kwargs)
 
 
+def prinlv(*args, **kwargs):
+    """
+    Like `prinl` but for more verbose logging.
+    """
+    spec = os.getenv("VERBOSE_LOGGING", "")
+    if spec and spec != "0":
+        prinl(*args, **kwargs)
+
+
 def log_error(context: str) -> str:
     """Log a message about an exception, and return the message"""
     exc_type, exc_obj, exc_tb = sys.exc_info()

@@ -29,7 +29,7 @@ from typing import ClassVar, Dict, Optional, Any, List, Tuple
 import botocore.client
 import botocore.session
 
-from app.base import env, Environment, prinl
+from app.base import env, Environment, prinl, prinlv
 
 
 class MapContext:
@@ -98,7 +98,7 @@ class MapContext:
 
     @classmethod
     def load_config_from_aws(cls):
-        prinl("Loading form context from AWS...")
+        prinlv("Loading form context from AWS...")
         client, bucket, key = cls.get_client_and_target()
         response = client.get_object(Bucket=bucket, Key=key)
         if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
@@ -111,7 +111,7 @@ class MapContext:
 
     @classmethod
     def load_config_locally(cls, config_path: str):
-        prinl(f"Loading config from '{config_path}'...")
+        prinlv(f"Loading config from '{config_path}'...")
         with open(config_path, "r", encoding="utf-8") as fp:
             form_data = json.load(fp)
         cls.load_config_from_json_data(form_data)
@@ -138,15 +138,15 @@ class MapContext:
 
     @classmethod
     def save_config_locally(cls, config_path: str):
-        prinl(f"Saving config to '{config_path}'...")
+        prinlv(f"Saving config to '{config_path}'...")
         with open(config_path, "w", encoding="utf-8") as fp:
             json.dump(cls.save_config_to_json_data(), fp, indent=2)
             fp.write("\n")
-        prinl(f"Config saved.")
+        prinlv(f"Config saved.")
 
     @classmethod
     def put_config_to_aws(cls):
-        prinl(f"Saving config to AWS...")
+        prinlv(f"Saving config to AWS...")
         content = cls.save_config_to_json_data()
         body = (json.dumps(content, indent=2) + "\n").encode("utf-8")
         client, bucket, key = cls.get_client_and_target()
@@ -159,7 +159,7 @@ class MapContext:
         )
         if response["ResponseMetadata"]["HTTPStatusCode"] >= 400:
             raise RuntimeError(f"Failed to write config: {response}")
-        prinl(f"Config saved.")
+        prinlv(f"Config saved.")
 
     @classmethod
     def get(cls) -> str:

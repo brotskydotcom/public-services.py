@@ -25,7 +25,7 @@ from airtable import Airtable
 
 from .constants import MapContext as MC
 from .formats import ATRecord
-from ..base import prinl
+from ..base import prinl, prinlv
 
 
 async def insert_or_update_record(an_record: ATRecord):
@@ -41,17 +41,17 @@ async def insert_or_update_record(an_record: ATRecord):
         prinl(f"Uploading new {record_type} record.")
         at.insert(an_record.all_fields(), typecast=at_typecast)
         return
-    prinl(f"Retrieved matching Airtable {record_type} record.")
+    prinlv(f"Retrieved matching Airtable {record_type} record.")
     if at_record := ATRecord.from_record(record_dict):
         an_record.at_match = at_record
     else:
         raise ValueError(f"Matching record is not valid: {record_dict}")
     updates = an_record.find_at_field_updates()
     if updates:
-        prinl(f"Updating {len(updates)} fields in record.")
+        prinl(f"Updating {len(updates)} fields in {record_type} record.")
         at.update(at_record.record_id, updates, typecast=at_typecast)
     else:
-        prinl(f"No fields need update in record.")
+        prinlv(f"No fields need update in record.")
 
 
 def fetch_all_records(keys_only: bool = False) -> Dict[str, ATRecord]:
@@ -61,8 +61,9 @@ def fetch_all_records(keys_only: bool = False) -> Dict[str, ATRecord]:
     (as determined by the formats module) is kept,
     and all the non-preferred records are deleted from Airtable.
     """
-    record_type = MC.get()
-    prinl(f"Looking for {record_type} records in Airtable...")
+    context = MC.get()
+    objects = "keys" if keys_only else "records"
+    prinl(f"Loading all {context} {objects} from Airtable...")
     at_key, at_base, at_table, _ = MC.at_connect_info()
     at = Airtable(at_base, at_table, api_key=at_key)
     if keys_only:
@@ -71,13 +72,13 @@ def fetch_all_records(keys_only: bool = False) -> Dict[str, ATRecord]:
         all_records = at.get_all(fields=fields)
     else:
         all_records = at.get_all()
-    prinl(f"Found {len(all_records)} records; looking for duplicates...")
+        prinlv(f"Found {len(all_records)} {objects}; looking for duplicates...")
     results: Dict[str, ATRecord] = {}
     to_delete = []
     for record_dict in all_records:
         record = ATRecord.from_record(record_dict)
         if record:
-            if existing := results.get(record.key):
+            if not keys_only and (existing := results.get(record.key)):
                 if record.is_preferred_to(existing):
                     results[record.key] = record
                     to_delete.append(existing.record_id)
@@ -86,9 +87,9 @@ def fetch_all_records(keys_only: bool = False) -> Dict[str, ATRecord]:
             else:
                 results[record.key] = record
     if len(to_delete) > 0:
-        prinl(f"Found {len(to_delete)} duplicates; removing them...")
+        prinlv(f"Found {len(to_delete)} duplicates; removing them...")
         at.batch_delete(to_delete)
-    prinl(f"Found {len(results)} distinct {record_type} record(s).")
+    prinl(f"Found {len(results)} distinct {context} {objects}.")
     return results
 
 
@@ -98,8 +99,8 @@ def compare_record_maps(
     assume_newer: bool = False,
 ) -> Dict[str, Dict]:
     prinl(
-        f"Comparing {len(at_map)} Airtable record(s) "
-        f"with {len(an_map)} source record(s)..."
+        f"Comparing {len(at_map)} Airtable {MC.get()} record(s) "
+        f"with {len(an_map)} source {MC.get()} record(s)..."
     )
     at_only, an_only, an_newer, matching = {}, dict(an_map), {}, {}
     for at_k, at_v in at_map.items():
@@ -116,10 +117,10 @@ def compare_record_maps(
     prinl(
         f"Found {len(an_only)} new, "
         f"{len(an_newer)} updated, and "
-        f"{len(matching)} matching source records."
+        f"{len(matching)} matching source {MC.get()} records."
     )
     if len(at_only) > 0:
-        prinl(f"Found {len(at_only)} Airtable record(s) without a match.")
+        prinlv(f"Found {len(at_only)} Airtable {MC.get()} record(s) without a match.")
     result = {
         "at_only": at_only,
         "an_only": an_only,
@@ -161,9 +162,9 @@ def make_record_updates(
             for i, (record_id, updates) in enumerate(update_map.items()):
                 at.update(record_id, updates, typecast=at_typecast)
                 if (i + 1) % 25 == 0:
-                    prinl(f"Processed {i+1}/{len(update_map)}...")
+                    prinlv(f"Processed {i+1}/{len(update_map)}...")
     if not did_update:
-        prinl(f"No updates required for {record_type} records.")
+        prinlv(f"No updates required for {record_type} records.")
     at_only = comparison_map["at_only"]
     if at_only and delete_unmatched_except:
         field_name = delete_unmatched_except[0]

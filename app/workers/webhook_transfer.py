@@ -24,7 +24,7 @@ from typing import Optional, Tuple
 
 import aiohttp
 
-from ..base import Environment, env, prinl, log_error
+from ..base import Environment, env, prinl, prinlv, log_error
 from ..db import redis, ItemListStore as Store
 from ..utils import (
     MapContext as MC,
@@ -44,7 +44,7 @@ async def process_webhook_list(key: str) -> Optional[str]:
     item_count = await redis.db.llen(key)
     if item_count == 0:
         return
-    prinl(f"Processing {item_count} webhook item(s) on list '{key}'...")
+    prinlv(f"Processing {item_count} webhook item(s) on list '{key}'...")
     count, good_count, bad_count = 0, 0, 0
     if int(rc) < 5:
         retry_key = f"{prefix}:{int(rc) + 1}"
@@ -55,9 +55,9 @@ async def process_webhook_list(key: str) -> Optional[str]:
     while item_data := await redis.db.lpop(key):
         count += 1
         form_name, body = pickle.loads(item_data)
-        prinl(f"Item #{count}/{item_count} has type '{form_name}'.")
+        prinlv(f"Item #{count}/{item_count} has type '{form_name}'.")
+        item = ANHash.from_parts(form_name, body)
         try:
-            item = ANHash.from_parts(form_name, body)
             if form_name == "donation":
                 # AN donation record
                 await transfer_donation(item)
@@ -72,13 +72,13 @@ async def process_webhook_list(key: str) -> Optional[str]:
         except ValueError as e:
             msg = e.args[0] if e.args else "Invalid data"
             debug_id = item.get_link_url("self") or hash(body)
-            prinl(f"{msg}, ignoring item #{count}: {debug_id}")
+            prinlv(f"{msg}, ignoring item #{count}: {debug_id}")
             good_count += 1
         except:
             log_error(f"Error on {form_name} item #{count}, will retry later")
             bad_count += 1
             await redis.db.rpush(retry_key, item_data)
-    prinl(
+    prinlv(
         f"Successfully processed {good_count} of {item_count} item(s) on list '{key}'."
     )
     if bad_count > 0:
@@ -143,7 +143,7 @@ async def transfer_person(item: ANHash) -> str:
 
 
 async def process_webhook_lists() -> Tuple[int, int]:
-    prinl(f"Processing ready webhook item lists...")
+    prinlv(f"Processing ready webhook item lists...")
     count, retry_count = 0, 0
     try:
         while list_key := await Store.select_for_processing("webhook"):
@@ -158,5 +158,5 @@ async def process_webhook_lists() -> Tuple[int, int]:
     except:
         log_error(f"Unexpected exception during webhook processing")
     finally:
-        prinl(f"Processed {count} item list(s); got {retry_count} retry list(s).")
+        prinlv(f"Processed {count} item list(s); got {retry_count} retry list(s).")
     return count, retry_count

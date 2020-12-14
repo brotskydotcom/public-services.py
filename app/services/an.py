@@ -20,7 +20,6 @@
 #  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 #  SOFTWARE.
 
-import asyncio
 import pickle
 from typing import Dict, List, Any
 
@@ -28,10 +27,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from starlette.responses import JSONResponse
 
-from ..base import prinl, log_error, env, Timestamp
+from ..base import prinl, prinlv, log_error, env, Timestamp
 from ..db import redis, ItemListStore as Store
 from ..utils import ANHash
-from ..workers import process_webhook_lists
 
 an = APIRouter()
 
@@ -83,7 +81,7 @@ async def receive_notification(body: List[Dict]):
 
     See https://actionnetwork.org/docs/webhooks for details.
     """
-    prinl(f"Received webhook with {len(body)} hash(es).")
+    prinlv(f"Received webhook with {len(body)} hash(es).")
     items = ANHash.find_items(data=body)
     if items:
         values = [pickle.dumps((item.form_name, item.body)) for item in items]
@@ -95,5 +93,8 @@ async def receive_notification(body: List[Dict]):
             return database_error(f"while saving received items")
         except:
             return other_error(f"while saving received items")
-    prinl(f"Accepted {len(items)} item(s) from webhook.")
+    if len(items):
+        prinlv(f"Accepted {len(items)} item(s) from webhook.")
+    else:
+        prinl(f"Warning: No valid items in webhook: {body}")
     return WebHookResponse(accepted=len(items))

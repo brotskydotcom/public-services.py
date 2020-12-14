@@ -29,7 +29,7 @@ from fastapi import File, UploadFile, Request, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from ..base import prinl, log_error, env, Environment, Timestamp
+from ..base import prinl, prinlv, log_error, env, Environment, Timestamp
 from ..db import redis, ItemListStore as Store
 
 mobilize = APIRouter()
@@ -149,5 +149,5 @@ async def process_csv_rows(kind: str, headings: List, data: List[List]) -> bool:
         await Store.add_new_list("csv", list_key)
     except redis.Error:
         return False
-    prinl(f"Accepted Mobilize CSV file")
+    prinlv(f"Accepted Mobilize CSV file")
     return True

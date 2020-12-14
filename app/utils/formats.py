@@ -31,7 +31,7 @@ from dateutil.tz import gettz
 from haleasy import HALEasy, LinkNotFoundError
 
 from .constants import MapContext as MC
-from ..base import prinl
+from ..base import prinlv
 
 
 class ANHash(HALEasy):
@@ -88,9 +88,6 @@ class ANHash(HALEasy):
 class ATRecord:
     key: str
     mod_date: datetime
-    # TODO: Fix the asymmetry in the naming of fields
-    # - core fields have their *source* name
-    # - custom fields have their *target* name
     core_fields: Dict[str, Any]
     custom_fields: Dict[str, Any]
     record_id: Optional[str] = ""
@@ -104,12 +101,12 @@ class ATRecord:
 
     @classmethod
     def dump_stats(cls, count: int, reset: bool = True):
-        prinl(f"Action Network core field counts for {count} people:")
+        prinlv(f"Action Network core field counts for {count} people:")
         for fn, fc in ATRecord.an_core_fields.items():
-            prinl(f"\t{fn}: {fc}")
-        prinl(f"Action Network custom field counts for {count} people:")
+            prinlv(f"\t{fn}: {fc}")
+        prinlv(f"Action Network custom field counts for {count} people:")
         for fn, fc in ATRecord.an_custom_fields.items():
-            prinl(f"\t{fn}: {fc}")
+            prinlv(f"\t{fn}: {fc}")
         if reset:
             cls.an_core_fields = {}
             cls.an_custom_fields = {}
@@ -127,10 +124,10 @@ class ATRecord:
         custom_fields = dict(record_data["fields"])
         core_field_map = MC.core_field_map()
         if not custom_fields.get(core_field_map[key]):
-            prinl(f"Airtable {MC.get()} record {record_id} has no {key} field.")
+            prinlv(f"Airtable {MC.get()} record {record_id} has no {key} field.")
             return None
         if not custom_fields.get(core_field_map["Timestamp (EST)"]):
-            prinl(f"Airtable {MC.get()} record {record_id} has no import timestamp.")
+            prinlv(f"Airtable {MC.get()} record {record_id} has no import timestamp.")
             custom_fields[core_field_map["Timestamp (EST)"]] = cls.epoch
         core_fields = {}
         for an_name, at_name in core_field_map.items():
@@ -201,7 +198,7 @@ class ATRecord:
         if amount == 0:
             return None
         if (currency := item["currency"]).lower() != "usd":
-            prinl(f"Donation {key} currency ({currency}) is unexpected.")
+            prinlv(f"Donation {key} currency ({currency}) is unexpected.")
         # find the recurrence
         if item["action_network:recurrence"]["recurring"]:
             period = item["action_network:recurrence"]["period"]
@@ -250,7 +247,7 @@ class ATRecord:
     def from_mobilize_event(cls, data: Dict[str, str]) -> Optional[ATRecord]:
         event_id = data.get("id")
         if not event_id:
-            prinl(f"Event data has no 'id' field.")
+            prinlv(f"Event data has no 'id' field.")
             return None
         slot_id = data.get("timeslot_id")
         if slot_id:
@@ -259,15 +256,15 @@ class ATRecord:
             row_id = f"Event {event_id}"
         deleted_at = data.get("deleted_at")
         if deleted_at:
-            prinl(f"Event {row_id} is a deleted event.")
+            prinlv(f"Event {row_id} is a deleted event.")
             return None
         timeslot_deleted_at = data.get("timeslot_deleted_at")
         if timeslot_deleted_at:
-            prinl(f"Timeslot {row_id} is a deleted timeslot.")
+            prinlv(f"Timeslot {row_id} is a deleted timeslot.")
             return None
         updated_at = data.get("updated_at")
         if not updated_at:
-            prinl(f"Event data has no 'updated_at' field.")
+            prinlv(f"Event data has no 'updated_at' field.")
             return None
         event_state = data.get("state") or data.get("organization_state")
         core: Dict[str, str] = {
