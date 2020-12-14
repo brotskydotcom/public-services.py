@@ -25,7 +25,7 @@ import pickle
 from datetime import datetime, timezone
 from typing import Tuple, Dict
 
-from ..base import prinl, log_error
+from ..base import prinl, prinlv, log_error
 from ..db import redis, ItemListStore as Store
 from ..utils import (
     MapContext as MC,
@@ -52,7 +52,7 @@ async def process_csv_list(key: str):
     if total == 0:
         # headings but no rows
         return
-    prinl(f"Processing {total} {item_type} row(s) on list '{key}'...")
+    prinlv(f"Processing {total} {item_type} row(s) on list '{key}'...")
     if item_type == "event":
         transfer_events(headings, rows)
     elif item_type == "shift":
@@ -73,7 +73,7 @@ def transfer_events(headings, rows):
         row_data = dict(zip(headings, row))
         event_record = ATRecord.from_mobilize_event(row_data)
         if not event_record:
-            prinl(f"Invalid data: skipping event on row {i+2}.")
+            prinlv(f"Invalid data: skipping event on row {i+2}.")
             continue
         email = event_record.core_fields["email"]
         if email and airtable_people.get(email) is not None:
@@ -93,8 +93,10 @@ def transfer_events(headings, rows):
 
 
 def transfer_shifts(headings, rows):
-    min_shift_datetime = os.getenv("MINIMUM_SHIFT_DATETIME")
-    force_shift_updates = os.getenv("FORCE_SHIFT_UPDATES")
+    if min_shift_datetime := os.getenv("MINIMUM_SHIFT_DATETIME"):
+        prinl(f"Ignoring shifts earlier than '{min_shift_datetime}'...")
+    if force_shift_updates := os.getenv("FORCE_SHIFT_UPDATES"):
+        prinl(f"Forcing updates to existing shift data...")
     MC.set("person")
     airtable_people = fetch_all_records(keys_only=True)
     MC.set("event")
@@ -126,6 +128,11 @@ def transfer_shifts(headings, rows):
             # since Action Network will eventually update them
             # from the volunteer uploads
             attendees[attendee_record.key] = attendee_record
+    if len(shifts) < len(rows):
+        prinl(
+            f"Ignoring {len(rows) - len(shifts)} earlier shift(s); "
+            f"transferring {len(shifts)} later shift(s)."
+        )
     MC.set("person")
     attendee_map = compare_record_maps(airtable_people, attendees)
     make_record_updates(attendee_map)
@@ -135,7 +142,7 @@ def transfer_shifts(headings, rows):
 
 
 async def process_csv_lists() -> Tuple[int, int]:
-    prinl(f"Processing ready CSV item lists...")
+    prinlv(f"Processing ready CSV item lists...")
     count, retry_count = 0, 0
     try:
         while list_key := await Store.select_for_processing("csv"):
@@ -149,5 +156,5 @@ async def process_csv_lists() -> Tuple[int, int]:
     except:
         log_error(f"Unexpected failure")
     finally:
-        prinl(f"Processed {count} CSV list(s).")
+        prinlv(f"Processed {count} CSV list(s).")
     return count, retry_count

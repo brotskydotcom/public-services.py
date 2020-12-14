@@ -23,7 +23,7 @@ from typing import Dict, List, Tuple, Set
 
 import requests
 
-from ..base import prinl, Environment, env
+from ..base import prinl, prinlv, Environment, env
 from ..utils import (
     MapContext as MC,
     ATRecord,
@@ -57,7 +57,7 @@ def fetch_donations() -> Tuple[Dict[str, List[ATRecord]], Set[str]]:
     constructing a map from donor URL to
     the donations made by that donor.
     """
-    prinl(f"Creating records for donations...")
+    prinlv(f"Creating records for donations...")
     MC.set("donation")
     session = requests.session()
     session.headers = MC.an_headers()
@@ -109,7 +109,7 @@ def fetch_donations() -> Tuple[Dict[str, List[ATRecord]], Set[str]]:
             if page_url:
                 page_urls.add(page_url)
             if (i + 1) % 10 == 0:
-                prinl(f"Processed {i + 1}/{len(donation_urls)}...")
+                prinlv(f"Processed {i + 1}/{len(donation_urls)}...")
     prinl(f"Created {donation_count} donation records for {len(donors)} donors.")
     return donors, page_urls
 
@@ -129,7 +129,7 @@ def fetch_donation_pages(page_urls: Set[str]) -> Dict[str, ATRecord]:
         page_record = ATRecord.from_donation_page(page_id, page_data)
         pages[page_record.key] = page_record
         if (i + 1) % 25 == 0:
-            prinl(f"Processed {i+1}/{len(page_urls)}...")
+            prinlv(f"Processed {i+1}/{len(page_urls)}...")
     prinl(f"Created {len(pages)} donation page records.")
     return pages
 
@@ -163,7 +163,7 @@ def fetch_donors(
             donation_record.core_fields["Email"] = [donor_record.key]
             donations[donation_record.key] = donation_record
         if (i + 1) % 25 == 0:
-            prinl(f"Processed {i+1}/{len(donor_map)}...")
+            prinlv(f"Processed {i+1}/{len(donor_map)}...")
     prinl(f"Created {len(donors)} donor records.")
     if env() is Environment.DEV:
         ATRecord.dump_stats(len(donors))

@@ -22,7 +22,6 @@
 import asyncio
 import sys
 
-from app.base import prinl
 from app.workers.main import app
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ from typing import Dict, List, Set, Sequence
 
 import requests
 
-from ..base import prinl, Environment, env
+from ..base import prinl, prinlv, Environment, env
 from ..utils import (
     MapContext as MC,
     ATRecord,
@@ -75,7 +75,7 @@ def fetch_submitter_urls(form_name: str) -> Set[str]:
                 continue
             submitter_urls.add(submitter_url)
             if (i + 1) % 10 == 0:
-                prinl(f"Processed {i + 1}/{len(urls)}...")
+                prinlv(f"Processed {i + 1}/{len(urls)}...")
     prinl(f"Found {len(submitter_urls)} submitter(s).")
     return submitter_urls
 
@@ -127,7 +127,7 @@ def fetch_people(people_urls: Sequence[str]) -> Dict[str, ATRecord]:
         record = ATRecord.from_person(submitter_data)
         people[record.key] = record
         if (i + 1) % 25 == 0:
-            prinl(f"Processed {i+1}/{len(people_urls)}...")
+            prinlv(f"Processed {i+1}/{len(people_urls)}...")
     prinl(f"Created {len(people)} records for people.")
     if env() is Environment.DEV:
         ATRecord.dump_stats(len(people))
